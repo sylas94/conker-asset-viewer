@@ -49,8 +49,14 @@ function deswizzle(data, w, h, bpp) {
 }
 
 function guardOpaque(out, n) {
-  let trans = 0;
-  for (let i = 0; i < n; i++) if (out[i * 4 + 3] < 128) trans++;
+  let trans = 0, uniform = true;
+  for (let i = 0; i < n; i++) {
+    if (out[i * 4 + 3] < 128) trans++;
+    if (uniform && (out[i * 4] !== out[0] || out[i * 4 + 1] !== out[1] || out[i * 4 + 2] !== out[2] || out[i * 4 + 3] !== out[3])) uniform = false;
+  }
+  // a single fully-transparent colour is a deliberately blank frame (model 008's open-eyelid frame 0x5f5 sits over
+  // the eyeball); forcing it opaque only paints a solid block over whatever is beneath
+  if (uniform && out[3] === 0) return out;
   if (trans > n * 0.90) for (let i = 0; i < n; i++) out[i * 4 + 3] = 255;
   return out;
 }
