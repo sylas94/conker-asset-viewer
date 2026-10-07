@@ -19,6 +19,20 @@ The extractor reads only from the ROM:
 
 "rzip" is a big-endian u32 uncompressed length followed by a raw deflate stream.
 
+## Downloads
+
+The **Download** button in the header exports whatever is selected, built in the browser from the visitor's own ROM data (`web/js/export.js`):
+
+| Tab | File | Contents |
+|---|---|---|
+| Characters | `.glb` | Skinned mesh, full skeleton, every animation clip (rotation + translation tracks, looping), embedded PNG textures. Conker's clips use their move names. |
+| Objects | `.glb` | Mesh with embedded textures |
+| Levels | `.glb` | Terrain plus every visible placed prop (respecting the States panel), props instanced from shared meshes |
+| Textures | `.png` | The texture at its real size |
+| Audio | `.wav` | The decoded sample |
+
+Models are glTF 2.0 in metres (N64 units × 0.01, Conker is about 1.6 m tall), Y up, double-sided materials. Vertex colours carry the N64's baked shading. Every export passes the Khronos glTF validator and imports into Blender with its armature and actions.
+
 ## Run locally
 
 ```

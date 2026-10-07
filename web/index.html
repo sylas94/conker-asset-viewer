@@ -187,6 +187,9 @@
   .gate-fine b{color:var(--ink-dim);font-weight:600}
   .hbtn{font:12px var(--sans);color:var(--ink-dim);background:transparent;border:1px solid var(--line);border-radius:7px;padding:5px 10px;cursor:pointer;margin-left:10px}
   .hbtn:hover{color:var(--ink);border-color:var(--accent)}
+  .hbtn.dl{color:var(--bg);background:var(--accent);border-color:var(--accent);font-weight:600}
+  .hbtn.dl:hover{background:var(--accent-2);color:var(--bg)}
+  .hbtn.dl:disabled{opacity:.45;cursor:default;background:transparent;color:var(--ink-faint);border-color:var(--line)}
 </style>
 </head>
 <body>
@@ -195,6 +198,7 @@
     <div class="brand"><span class="k">Rare · N64 · 2001</span><h1>Conker Asset Explorer <b>// textured geometry</b></h1></div>
     <div class="spacer"></div>
     <div class="rom-chip"><span class="dot"></span><span>conker.us.z64 · F3DEX2 + texture pool</span></div>
+    <button class="hbtn dl" id="dlBtn" disabled title="Download the selected item">⭳ Download</button>
     <button class="hbtn" id="romForget" title="Remove the saved ROM from this browser and load another">Change ROM</button>
   </header>
   <div class="rail">

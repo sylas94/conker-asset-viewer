@@ -1458,7 +1458,7 @@ function updatePoseNote(m){
                  : STATE.poseAnim==='bind' ? 'bind pose (rest)' : 'synthetic idle sway';
   $('#foot-note').textContent = nclip ? ('live rig · '+nclip+' real in-game clips') : 'live skeletal rig (no clip pack matched)';
 }
-function selectModel(cat,i){PLAYER.on=false;updatePlayerHUD();STATE.cat=cat;STATE.idx=i;setCatUI();   // leaving the level despawns the player
+function selectModel(cat,i){PLAYER.on=false;updatePlayerHUD();STATE.cat=cat;STATE.idx=i;setCatUI();updateDownloadBtn();   // leaving the level despawns the player
   if(cat==='audio'){selectAudio(i);return;}
   const m=DATA[cat][i];
   if(cat==='posable'){preparePosable(m);mesh=m;resetCam();hideStates();
@@ -1534,7 +1534,36 @@ const _bStates=$('#tStates');
 if(_bStates)_bStates.onclick=()=>setStates(!STATE.states);
 function updatePoseRow(){const r=$('#poserow');if(r)r.style.display=(STATE.cat==='posable')?'':'none';}
 if($('#playPrompt'))$('#playPrompt').onclick=()=>{$('#playPrompt').blur();dispatchEvent(new KeyboardEvent('keydown',{key:'p'}));};
-function setCatUI(){updatePlayPrompt();const isA=STATE.cat==='audio',isT=STATE.cat==='textures';
+// ---- DOWNLOAD the selected item: characters/objects/levels -> .glb (rig + clips + textures), textures -> .png, audio -> .wav
+function dlTarget(){
+  const c=STATE.cat;
+  if(c==='textures')return STATE.texSel!=null&&DATA.textures[STATE.texSel]?{kind:'png',label:'.png'}:null;
+  if(c==='audio')return AUDIO&&AUDIO.samples[STATE.idx]?{kind:'wav',label:'.wav'}:null;
+  const m=(DATA[c]||[])[STATE.idx];
+  return m?{kind:c,label:'.glb',m}:null;
+}
+function updateDownloadBtn(){const b=$('#dlBtn');if(!b||b._busy)return;const t=dlTarget();
+  b.disabled=!t;b.textContent='⭳ Download '+(t?t.label:'');
+  b.title=!t?'Select something to download':t.label==='.glb'?(STATE.cat==='posable'?'glTF 2.0 with skeleton, skin, every animation clip and textures':'glTF 2.0 with textures'):'Download the selected '+(t.kind==='png'?'texture':'sound');}
+function saveBytes(bytes,name,mime){const u=URL.createObjectURL(new Blob([bytes],{type:mime}));const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),30000);}
+const safeName=s=>String(s).replace(/[^a-z0-9]+/gi,'_').replace(/^_|_$/g,'').toLowerCase();
+async function downloadSelected(){
+  const b=$('#dlBtn'),t=dlTarget(); if(!t||!window.ConkerExport)return;
+  if(t.kind==='wav'){downloadWav(STATE.idx);return;}
+  b._busy=true;b.disabled=true;b.textContent='Exporting…';
+  try{
+    if(t.kind==='png'){const i=STATE.texSel,tm=DATA.texmeta[i]||[0],tx=DATA.textures[i];
+      saveBytes(await ConkerExport.texturePNG(DATA,i),`conker_tex_0x${tm[0].toString(16)}_${tx.w}x${tx.h}.png`,'image/png');}
+    else{const m=t.m;let bytes,name;
+      if(t.kind==='posable'){bytes=await ConkerExport.exportCharacter(DATA,m,{ANIMTAB,variant:STATE.shirt||0});name='conker_'+safeName(m.name);}
+      else if(t.kind==='levels'){bytes=await ConkerExport.exportLevel(DATA,m);name='conker_'+safeName(m.name);}
+      else{bytes=await ConkerExport.exportObject(DATA,m);name='conker_'+safeName(m.name);}
+      saveBytes(bytes,name+'.glb','model/gltf-binary');}
+  }catch(e){console.error('export failed',e);alert('Export failed: '+e.message);}
+  b._busy=false;updateDownloadBtn();
+}
+if($('#dlBtn'))$('#dlBtn').onclick=downloadSelected;
+function setCatUI(){updatePlayPrompt();updateDownloadBtn();const isA=STATE.cat==='audio',isT=STATE.cat==='textures';
   const ap=$('#audioplayer'),ar=$('#audiorow'); if(ap)ap.style.display=isA?'flex':'none'; if(ar)ar.style.display=isA?'flex':'none';
   const tgal=$('#texgallery'); if(tgal)tgal.style.display=isT?'flex':'none';
   const sb=$('#search'); if(sb)sb.placeholder=isT?'filter by id (0x…) or format…':'filter…';
@@ -1806,6 +1835,7 @@ function buildGallery(){texApplyFilter();renderTexPage();}
 let _texAniTimer=0,_texAniFrame=0;
 function stopTexAnim(){if(_texAniTimer){clearInterval(_texAniTimer);_texAniTimer=0;}}
 function showTexInspect(i){
+  STATE.texSel=i;updateDownloadBtn();
   stopTexAnim();
   const panel=$('#texinspect');const t=DATA.textures[i],tm=DATA.texmeta[i]||[];
   const R=(k,v)=>'<div class="row"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>';

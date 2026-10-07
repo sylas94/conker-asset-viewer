@@ -84,9 +84,11 @@ async function start(fileBytes, { remember, fromCache }) {
 function bootViewer() {
   document.body.classList.add("ready");
   gate.remove();
-  const s = document.createElement("script");
-  s.src = "js/viewer.js";
-  document.body.appendChild(s);
+  for (const src of ["js/export.js", "js/viewer.js"]) {
+    const s = document.createElement("script");
+    s.src = src; s.async = false;   // keep order
+    document.body.appendChild(s);
+  }
 }
 
 async function readFile(f) {
