@@ -1,0 +1,769 @@
+<title>Conker ROM — Asset Explorer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{--bg:#0f1218;--stage:#080a0f;--panel:#161a23;--panel-2:#1c2130;--line:#262b36;--line-soft:#1e232e;
+    --ink:#e7ecf3;--ink-dim:#9aa5b6;--ink-faint:#5f6b7e;--accent:#e0873c;--accent-2:#f2a95c;--data:#8fbfa9;
+    --mono:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;}
+  @media (prefers-color-scheme:light){:root{--bg:#e9e6dd;--stage:#d7d3c6;--panel:#f3f0e8;--panel-2:#eae6db;--line:#cdc7b6;--line-soft:#dbd6c8;--ink:#20242c;--ink-dim:#5a6472;--ink-faint:#8a93a1;--accent:#b8632a;--accent-2:#a9551f;--data:#3f7a5f;}}
+  :root[data-theme="dark"]{--bg:#0f1218;--stage:#080a0f;--panel:#161a23;--panel-2:#1c2130;--line:#262b36;--line-soft:#1e232e;--ink:#e7ecf3;--ink-dim:#9aa5b6;--ink-faint:#5f6b7e;--accent:#e0873c;--accent-2:#f2a95c;--data:#8fbfa9;}
+  :root[data-theme="light"]{--bg:#e9e6dd;--stage:#d7d3c6;--panel:#f3f0e8;--panel-2:#eae6db;--line:#cdc7b6;--line-soft:#dbd6c8;--ink:#20242c;--ink-dim:#5a6472;--ink-faint:#8a93a1;--accent:#b8632a;--accent-2:#a9551f;--data:#3f7a5f;}
+  *{box-sizing:border-box}html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+  #app{display:grid;grid-template-columns:290px 1fr;grid-template-rows:auto 1fr auto;grid-template-areas:"head head" "rail stage" "rail foot";height:100vh;gap:1px;background:var(--line-soft)}
+  header{grid-area:head;background:var(--panel);display:flex;align-items:center;gap:16px;padding:11px 18px;border-bottom:1px solid var(--line)}
+  .brand{display:flex;flex-direction:column;gap:2px}
+  .brand .k{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent)}
+  .brand h1{margin:0;font-family:var(--mono);font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .brand h1 b{color:var(--ink-dim);font-weight:500}
+  header .spacer{flex:1}
+  .rom-chip{font-family:var(--mono);font-size:11px;color:var(--ink-dim);border:1px solid var(--line);border-radius:100px;padding:5px 11px;display:flex;gap:8px;align-items:center;white-space:nowrap}
+  .rom-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--data);box-shadow:0 0 8px var(--data)}
+  .rail{grid-area:rail;background:var(--panel);display:flex;flex-direction:column;min-height:0}
+  .tabs{display:flex;gap:2px;padding:10px 10px 0}
+  .tab{flex:1;font-family:var(--mono);font-size:12px;padding:8px 6px;text-align:center;cursor:pointer;color:var(--ink-dim);background:transparent;border:1px solid transparent;border-bottom:none;border-radius:7px 7px 0 0}
+  .tab.on{color:var(--ink);background:var(--panel-2);border-color:var(--line)}
+  .tab .c{color:var(--ink-faint);font-size:10.5px}
+  .searchwrap{padding:9px 10px 6px}
+  #search{width:100%;font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:7px 10px}
+  #search:focus{outline:2px solid var(--accent-2);outline-offset:1px}
+  .list{flex:1;overflow-y:auto;padding:2px 8px 8px;display:flex;flex-direction:column;gap:3px}
+  .item{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;cursor:pointer;border:1px solid transparent;background:transparent;color:var(--ink-dim);text-align:left;font-family:var(--mono);font-size:12px;width:100%}
+  .item:hover{background:var(--panel-2);color:var(--ink)}
+  .item.on{background:var(--panel-2);border-color:var(--line);color:var(--ink)}
+  .item .sw{width:8px;height:8px;border-radius:2px;flex:none;background:var(--ink-faint)}
+  .item.on .sw{background:var(--accent);box-shadow:0 0 7px var(--accent)}
+  .item .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .tc{color:var(--ink-faint);font-size:11px;font-variant-numeric:tabular-nums}
+  .item.on .tc{color:var(--data)}
+  .controls{border-top:1px solid var(--line-soft);padding:11px 12px;display:flex;flex-direction:column;gap:8px}
+  .tgrow{display:flex;gap:6px;flex-wrap:wrap}
+  .tg{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11.5px;color:var(--ink-dim)}
+  .tg button{font-family:var(--mono);font-size:11px;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
+  .tg select{font-family:var(--mono);font-size:11px;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer;max-width:150px}
+  .tg button.on{background:var(--accent);border-color:var(--accent);color:#111}
+  .tg button:focus-visible{outline:2px solid var(--accent-2);outline-offset:2px}
+  .help{font-family:var(--mono);font-size:10.5px;line-height:1.75;color:var(--ink-faint)}
+  .help b{color:var(--ink-dim);font-weight:600}
+  .stage{grid-area:stage;position:relative;background:radial-gradient(130% 130% at 50% 12%,color-mix(in srgb,var(--stage) 82%,var(--panel)) 0%,var(--stage) 72%);overflow:hidden;min-width:0;min-height:0}
+  #gl{display:block;width:100%;height:100%;cursor:grab}#gl:active{cursor:grabbing}
+  .badge{position:absolute;left:15px;top:13px;font-family:var(--mono);font-size:11px;color:var(--ink-faint);pointer-events:none}
+  .badge .hl{color:var(--accent)}
+  .campill{position:absolute;right:14px;bottom:12px;font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);background:color-mix(in srgb,var(--panel) 70%,transparent);border:1px solid var(--line-soft);border-radius:7px;padding:5px 9px;pointer-events:none}
+  .campill b{color:var(--data)}
+  .loading{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:var(--mono);font-size:12px;color:var(--ink-dim)}
+  .inspect{position:absolute;left:14px;top:14px;width:220px;font-family:var(--mono);font-size:11px;color:var(--ink);background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line);border-radius:9px;padding:11px 12px;box-shadow:0 6px 22px rgba(0,0,0,.28)}
+  .inspect img{width:100%;image-rendering:pixelated;border:1px solid var(--line);border-radius:5px;background:#111;margin-bottom:8px;display:block}
+  .inspect .row{display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-top:1px solid var(--line-soft)}
+  .inspect .row .k{color:var(--ink-faint)}
+  .inspect .row .v{color:var(--data);text-align:right;word-break:break-all}
+  .inspect .hd{color:var(--accent);font-size:11.5px;margin-bottom:7px;letter-spacing:.03em}
+  .inspect .close{position:absolute;right:8px;top:6px;cursor:pointer;color:var(--ink-faint);font-size:14px;line-height:1}
+  .inspect .warn{color:var(--accent-2);margin-top:6px;font-size:10.5px;line-height:1.35}
+  .inspecthint{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);font-family:var(--mono);font-size:11px;color:var(--ink);background:color-mix(in srgb,var(--accent) 22%,var(--panel));border:1px solid var(--accent);border-radius:20px;padding:6px 14px;pointer-events:none}
+  .statesp{position:absolute;right:14px;top:14px;width:258px;max-height:80%;overflow-y:auto;font-family:var(--mono);font-size:11px;color:var(--ink);background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--line);border-radius:9px;padding:11px 12px;box-shadow:0 6px 22px rgba(0,0,0,.28)}
+  .statesp .hd{color:var(--accent);font-size:11.5px;margin-bottom:8px;letter-spacing:.03em}
+  .statesp .grp{border-top:1px solid var(--line-soft);padding:7px 0}
+  .statesp .lbl{color:var(--ink-dim);font-size:10px;margin-bottom:4px}
+  .statesp .chip{display:inline-block;cursor:pointer;padding:2px 7px;margin:2px 3px 2px 0;border:1px solid var(--line);border-radius:5px;color:var(--ink-faint);font-size:10px;user-select:none}
+  .statesp .chip.on{background:color-mix(in srgb,var(--accent) 30%,transparent);border-color:var(--accent);color:var(--ink)}
+  .statesp input[type=range]{width:100%;margin:2px 0}
+  .statesp .axl{display:block;color:var(--ink-dim);font-size:9.5px;margin-top:3px;letter-spacing:.02em}
+  .statesp .axl .v{float:right;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+  .statesp .hint{color:var(--ink-faint);font-size:9px;margin:3px 0 1px}
+  .statesp .close{position:absolute;right:9px;top:7px;cursor:pointer;color:var(--ink-faint);font-size:15px;line-height:1}
+  .statesp .rst{cursor:pointer;color:var(--accent-2);font-size:10px;float:right}
+  .foot{grid-area:foot;background:var(--panel);border-top:1px solid var(--line);padding:8px 16px;display:flex;gap:24px;align-items:center;overflow-x:auto}
+  .stat{display:flex;flex-direction:column;gap:1px;white-space:nowrap}
+  .stat .l{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink-faint)}
+  .stat .v{font-family:var(--mono);font-size:13px;color:var(--data);font-variant-numeric:tabular-nums}
+  .stat .v.accent{color:var(--accent)}
+  .foot .spacer{flex:1}.foot .note{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);text-align:right}
+  @media (max-width:780px){#app{grid-template-columns:1fr;grid-template-rows:auto 44vh auto auto;grid-template-areas:"head" "stage" "foot" "rail"}.rail{max-height:44vh}}
+  @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+<div id="app">
+  <header>
+    <div class="brand"><span class="k">Rare · N64 · 2001</span><h1>Conker Asset Explorer <b>// textured geometry</b></h1></div>
+    <div class="spacer"></div>
+    <div class="rom-chip"><span class="dot"></span><span>conker.us.z64 · F3DEX2 + texture pool</span></div>
+  </header>
+  <div class="rail">
+    <div class="tabs" id="tabs"></div>
+    <div class="searchwrap"><input id="search" placeholder="filter…" autocomplete="off" spellcheck="false"></div>
+    <div class="list" id="list"></div>
+    <div class="controls">
+      <div class="tgrow">
+        <div class="tg"><span>Color</span><button id="tColor" class="on">Textured</button></div>
+        <div class="tg"><span>Shade</span><button id="tShade" class="on">On</button></div>
+        <div class="tg"><span>Wire</span><button id="tWire">Off</button></div>
+        <div class="tg"><span>Spin</span><button id="tSpin">Off</button></div>
+        <div class="tg"><span>Sky</span><button id="tSky" class="on">On</button></div>
+        <div class="tg"><span>Inspect</span><button id="tInspect">Off</button></div>
+        <div class="tg" id="statesTg" style="display:none"><span>States</span><button id="tStates">Off</button></div>
+      </div>
+      <div class="tgrow" id="poserow" style="display:none">
+        <div class="tg"><span>Anim</span><select id="animSel"></select></div>
+        <div class="tg"><span>Attach</span><select id="attachSel"></select></div>
+        <div class="tg"><span>Speed</span><input id="animSpeed" type="range" min="0" max="3" step="0.05" value="1" style="width:80px"><span id="animSpeedVal" style="min-width:30px;color:var(--data)">1.0&times;</span></div>
+        <div class="tg" id="poseNote" style="flex:1;color:var(--ink-faint);font-size:10.5px;align-items:center">live skeletal rig</div>
+      </div>
+      <div class="help"><b>Drag</b> orbit · <b>Wheel</b> zoom · <b>Right/Shift-drag</b> pan<br><b>W A S D</b> fly · <b>Q / E</b> down / up · <b>Dbl-click</b> reset</div>
+    </div>
+  </div>
+  <div class="stage">
+    <canvas id="gl"></canvas>
+    <div class="badge"><span class="hl" id="bName">—</span></div>
+    <div class="campill" id="campill">dist <b id="cDist">—</b></div>
+    <div class="loading" id="loading">decoding textures…</div>
+    <div class="inspect" id="inspect" style="display:none"></div>
+    <div class="inspecthint" id="inspecthint" style="display:none">click a surface to inspect its texture</div>
+    <div class="statesp" id="states" style="display:none"></div>
+  </div>
+  <div class="foot">
+    <div class="stat"><span class="l">Source</span><span class="v accent" id="sSrc">—</span></div>
+    <div class="stat"><span class="l">Triangles</span><span class="v" id="sTris">—</span></div>
+    <div class="stat"><span class="l">Textures</span><span class="v" id="sTex">—</span></div>
+    <div class="stat"><span class="l">Type</span><span class="v" id="sKind">—</span></div>
+    <div class="spacer"></div>
+    <div class="note" id="foot-note">geometry + textures decoded from cartridge</div>
+  </div>
+</div>
+<script id="geometry" type="application/json">{"textures":[],"characters":[],"objects":[],"levels":[]}</script>
+<script>
+"use strict";
+const V3={sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],add:(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],scale:(a,s)=>[a[0]*s,a[1]*s,a[2]*s],dot:(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],cross:(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],norm:a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return[a[0]/l,a[1]/l,a[2]/l];}};
+const M4={mul:(a,b)=>{const o=new Array(16);for(let r=0;r<4;r++)for(let c=0;c<4;c++){let s=0;for(let k=0;k<4;k++)s+=a[k*4+r]*b[c*4+k];o[c*4+r]=s;}return o;},persp:(f,a,n,fr)=>{const t=1/Math.tan(f/2);return[t/a,0,0,0,0,t,0,0,0,0,(fr+n)/(n-fr),-1,0,0,(2*fr*n)/(n-fr),0];},lookAt:(e,c,u)=>{const f=V3.norm(V3.sub(c,e)),s=V3.norm(V3.cross(f,u)),uu=V3.cross(s,f);return[s[0],uu[0],-f[0],0,s[1],uu[1],-f[1],0,s[2],uu[2],-f[2],0,-V3.dot(s,e),-V3.dot(uu,e),V3.dot(f,e),1];}};
+let DATA={textures:[],characters:[],objects:[],levels:[]};
+try{DATA=JSON.parse(document.getElementById("geometry").textContent);}catch(e){}
+const CATS=[{id:'posable',label:'Characters'},{id:'objects',label:'Objects'},{id:'levels',label:'Levels'}];
+const $=s=>document.querySelector(s);const fmt=n=>n.toLocaleString('en-US');
+function b64(b,T){const s=atob(b),n=s.length,a=new Uint8Array(n);for(let i=0;i<n;i++)a[i]=s.charCodeAt(i);return new T(a.buffer);}
+// build renderable arrays from a group (compute smooth normals)
+function decodeGroup(g){return {ti:g.ti,anim:g.anim||null,aspd:g.aspd||0,dec:g.dec||0,bl:g.bl||0,al:g.al||0,ac:g.ac||0,ws:g.ws||0,wt:g.wt||0,sky:g.sky||0,mod:g.mod||0,vat:g.vat||0,va:g.va?b64(g.va,Uint8Array):null,tint:g.tint||null,p:b64(g.p,Int16Array),uv:b64(g.uv,Int16Array),col:b64(g.col,Uint8Array),idx:b64(g.idx,Uint16Array)};}
+// Process one decoded group into GPU-ready arrays. local=true keeps LOCAL (part-space) positions so a
+// per-prop model matrix can transform them live (state controller); local=false bakes centered/scaled pos.
+function procGroup(g,cx,cy,cz,s,local){
+  const np=g.p.length/3, pos=new Float32Array(np*3), nrm=new Float32Array(np*3), uvf=new Float32Array(np*2), colf=new Float32Array(np*3), vaf=new Float32Array(np);
+  for(let i=0;i<np;i++)vaf[i]=g.va?g.va[i]/255:1.0;
+  let umin=1e9,umax=-1e9,vmin=1e9,vmax=-1e9;
+  for(let i=0;i<np;i++){
+    if(local){pos[i*3]=g.p[i*3];pos[i*3+1]=g.p[i*3+1];pos[i*3+2]=g.p[i*3+2];}
+    else{pos[i*3]=(g.p[i*3]-cx)*s;pos[i*3+1]=(g.p[i*3+1]-cy)*s;pos[i*3+2]=(g.p[i*3+2]-cz)*s;}
+    const u=g.uv[i*2]/512,v=g.uv[i*2+1]/512; uvf[i*2]=u;uvf[i*2+1]=v;
+    if(u<umin)umin=u;if(u>umax)umax=u;if(v<vmin)vmin=v;if(v>vmax)vmax=v;
+    colf[i*3]=g.col[i*3]/255;colf[i*3+1]=g.col[i*3+1]/255;colf[i*3+2]=g.col[i*3+2]/255;}
+  // clamp->repeat when UVs sample outside [0,1]. FAR outside (>1.5)=tiling -> repeat even for alpha surfaces.
+  let ws2=g.ws, wt2=g.wt;
+  if(ws2===2 && !g.dec && (umax>1.5||umin<-0.5 || (!g.al && (umax>1.01 || umin<-0.01)))) ws2=0;
+  if(wt2===2 && !g.dec && (vmax>1.5||vmin<-0.5 || (!g.al && (vmax>1.01 || vmin<-0.01)))) wt2=0;
+  // Smooth-alpha formats (RGBA32, IA*) blend instead of hard-cutout.
+  let bl3=g.bl; const tm=(DATA.texmeta&&g.ti>=0)?DATA.texmeta[g.ti]:null;
+  if(tm && g.al){ const fmt=tm[1],siz=tm[2],flag=tm[3];
+    const isCI=(flag===0x400000||flag===0x800000||fmt===2);
+    if(!isCI && ((fmt===0&&siz===3)||fmt===3)) bl3=1; }
+  for(let t=0;t<g.idx.length;t+=3){const a=g.idx[t],b=g.idx[t+1],c=g.idx[t+2];
+    const ax=pos[a*3],ay=pos[a*3+1],az=pos[a*3+2],bx=pos[b*3],by=pos[b*3+1],bz=pos[b*3+2],cx2=pos[c*3],cy2=pos[c*3+1],cz2=pos[c*3+2];
+    let nx=(by-ay)*(cz2-az)-(bz-az)*(cy2-ay),ny=(bz-az)*(cx2-ax)-(bx-ax)*(cz2-az),nz=(bx-ax)*(cy2-ay)-(by-ay)*(cx2-ax);
+    for(const vi of [a,b,c]){nrm[vi*3]+=nx;nrm[vi*3+1]+=ny;nrm[vi*3+2]+=nz;}}
+  return {ti:g.ti,anim:g.anim,aspd:g.aspd,dec:g.dec,bl:bl3,al:g.al,ac:g.ac,ws:ws2,wt:wt2,sky:g.sky,mod:g.mod,vat:g.vat,tint:g.tint,pos,nrm,uv:uvf,col:colf,va:vaf,idx:g.idx,n:g.idx.length};
+}
+function prep(m){
+  if(m._g)return m; m._g=[];
+  let cx=0,cy=0,cz=0,nv=0,rad=1e-6;
+  const gs=m.groups.map(decodeGroup);
+  for(const g of gs){for(let i=0;i<g.p.length;i+=3){cx+=g.p[i];cy+=g.p[i+1];cz+=g.p[i+2];nv++;}}
+  if(m.props){for(const pr of m.props){cx+=pr.pos[0];cy+=pr.pos[1];cz+=pr.pos[2];nv++;}}   // frame props too
+  nv=Math.max(nv,1); cx/=nv;cy/=nv;cz/=nv;
+  for(const g of gs){for(let i=0;i<g.p.length;i+=3){rad=Math.max(rad,Math.hypot(g.p[i]-cx,g.p[i+1]-cy,g.p[i+2]-cz));}}
+  if(m.props){for(const pr of m.props){rad=Math.max(rad,Math.hypot(pr.pos[0]-cx,pr.pos[1]-cy,pr.pos[2]-cz));}}
+  const s=1.7/rad; m._scale=s; m._cx=cx;m._cy=cy;m._cz=cz;m._s=s;
+  for(const g of gs) m._g.push(procGroup(g,cx,cy,cz,s,false));
+  if(m.partpool&&m.props){try{prepProps(m,cx,cy,cz,s);}catch(e){console.error('prepProps',e);m._props=null;}}
+  return m;
+}
+// ---- skeletal skinning (Pose / Rig tab) ----
+// Row-vector 4x4 math (row-major flat), matching the proven anim_pose pipeline (world = local . parentWorld).
+const IDENT=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
+function rmul(A,B){const R=new Array(16);for(let r=0;r<4;r++)for(let c=0;c<4;c++){let s=0;for(let k=0;k<4;k++)s+=A[r*4+k]*B[k*4+c];R[r*4+c]=s;}return R;}
+function bamCS(bam){const a=((bam&0xFFFF)/65536)*6.283185307179586;return [Math.cos(a),Math.sin(a)];}
+function localMat(ax,ay,az,tx,ty,tz){
+  const cx=bamCS(ax),cy=bamCS(ay),cz=bamCS(az);
+  const Rx=[1,0,0,0, 0,cx[0],cx[1],0, 0,-cx[1],cx[0],0, 0,0,0,1];
+  const Ry=[cy[0],0,-cy[1],0, 0,1,0,0, cy[1],0,cy[0],0, 0,0,0,1];
+  const Rz=[cz[0],cz[1],0,0, -cz[1],cz[0],0,0, 0,0,1,0, 0,0,0,1];
+  const M=rmul(rmul(Rz,Ry),Rx);   // Euler order 'zyx' (== anim_pose)
+  M[12]=tx;M[13]=ty;M[14]=tz;return M;
+}
+function poseWorld(bones,slot2idx,angles){
+  const bc=bones.length,local=new Array(bc),world=new Array(bc).fill(null);
+  for(let i=0;i<bc;i++){const b=bones[i],a=angles[b.rot]||[0,0,0];local[i]=localMat(a[0],a[1],a[2],b.rx,b.ry,b.rz);}
+  function res(i,d){if(world[i])return world[i];if(d>bc){world[i]=local[i];return world[i];}
+    const par=bones[i].par,pj=slot2idx[par];
+    world[i]=(par===0xFF||pj===undefined||pj===i)?local[i]:rmul(local[i],res(pj,d+1));return world[i];}
+  for(let i=0;i<bc;i++)res(i,0);
+  const bySlot={};for(let i=0;i<bc;i++)bySlot[bones[i].slot]=world[i];return bySlot;
+}
+function preparePosable(m){
+  if(m._pose)return m;
+  const bones=m.bones.map(b=>({par:b[0],slot:b[1],rot:b[2],rx:b[3],ry:b[4],rz:b[5]}));
+  const slot2idx={};bones.forEach((b,i)=>{slot2idx[b.slot]=i;});
+  const depth={};
+  function dep(slot,g){if(depth[slot]!==undefined)return depth[slot];if(g>bones.length){return depth[slot]=1;}
+    const b=bones[slot2idx[slot]];depth[slot]=(!b||b.par===0xFF||slot2idx[b.par]===undefined)?1:1+dep(b.par,g+1);return depth[slot];}
+  bones.forEach(b=>dep(b.slot,0));
+  const groups=m.groups.map(g=>({ti:g.ti,al:g.al||0,ac:g.ac||0,bl:g.bl||0,dec:g.dec||0,mod:g.mod||0,ws:g.ws||0,wt:g.wt||0,vat:g.vat||0,va:g.va?b64(g.va,Uint8Array):null,n:g.n,
+    slot:b64(g.slot,Uint8Array),pos:b64(g.pos,Int16Array),uv:b64(g.uv,Int16Array),col:b64(g.col,Uint8Array),idx:b64(g.idx,Uint16Array)}));
+  // bind pose -> centre + scale (fit to view like prep())
+  const bind=poseWorld(bones,slot2idx,{});
+  let mnx=1e9,mny=1e9,mnz=1e9,mxx=-1e9,mxy=-1e9,mxz=-1e9;
+  for(const g of groups){const np=g.slot.length;for(let i=0;i<np;i++){const M=bind[g.slot[i]]||IDENT,x=g.pos[i*3],y=g.pos[i*3+1],z=g.pos[i*3+2];
+    const wx=x*M[0]+y*M[4]+z*M[8]+M[12],wy=x*M[1]+y*M[5]+z*M[9]+M[13],wz=x*M[2]+y*M[6]+z*M[10]+M[14];
+    if(wx<mnx)mnx=wx;if(wy<mny)mny=wy;if(wz<mnz)mnz=wz;if(wx>mxx)mxx=wx;if(wy>mxy)mxy=wy;if(wz>mxz)mxz=wz;}}
+  const cx=(mnx+mxx)/2,cy=(mny+mxy)/2,cz=(mnz+mxz)/2,rad=Math.max(1e-6,Math.hypot(mxx-cx,mxy-cy,mxz-cz)),s=1.7/rad;
+  for(const g of groups){const np=g.slot.length;const uvf=new Float32Array(np*2),colf=new Float32Array(np*3);
+    let umin=1e9,umax=-1e9,vmin=1e9,vmax=-1e9;
+    for(let i=0;i<np;i++){const u=g.uv[i*2]/512,v=g.uv[i*2+1]/512; uvf[i*2]=u;uvf[i*2+1]=v;
+      if(u<umin)umin=u;if(u>umax)umax=u;if(v<vmin)vmin=v;if(v>vmax)vmax=v;
+      colf[i*3]=g.col[i*3]/255;colf[i*3+1]=g.col[i*3+1]/255;colf[i*3+2]=g.col[i*3+2]/255;}
+    // same fixes as level prep(): clamp->repeat for OPAQUE surfaces sampling outside [0,1]; smooth-alpha -> blend
+    if(g.ws===2 && !g.dec && (umax>1.5||umin<-0.5 || (!g.al && (umax>1.01||umin<-0.01)))) g.ws=0;
+    if(g.wt===2 && !g.dec && (vmax>1.5||vmin<-0.5 || (!g.al && (vmax>1.01||vmin<-0.01)))) g.wt=0;
+    const tm=(DATA.texmeta&&g.ti>=0)?DATA.texmeta[g.ti]:null;
+    if(tm && g.al){const fmt=tm[1],siz=tm[2],flag=tm[3],isCI=(flag===0x400000||flag===0x800000||fmt===2);
+      if(!isCI && ((fmt===0&&siz===3)||fmt===3)) g.bl=1;}
+    const vaf=new Float32Array(np);for(let i=0;i<np;i++)vaf[i]=g.va?g.va[i]/255:1.0;
+    g.np=np;g.uvBuf=glBuf(uvf,gl.ARRAY_BUFFER);g.colBuf=glBuf(colf,gl.ARRAY_BUFFER);g.vaBuf=glBuf(vaf,gl.ARRAY_BUFFER);g.idxBuf=glBuf(g.idx,gl.ELEMENT_ARRAY_BUFFER);
+    g.posBuf=gl.createBuffer();g.nrmBuf=gl.createBuffer();g.posArr=new Float32Array(np*3);g.nrmArr=new Float32Array(np*3);}
+  // real in-game animation clips (extracted from the assets02 keyframe pack this model maps to)
+  const clips=[];
+  const ap=(DATA.animpacks&&m.pack!=null)?DATA.animpacks[String(m.pack)]:null;
+  if(ap)for(const c of ap){const map={};(c.idx||[]).forEach((e,i)=>{map[e]=i;});
+    clips.push({n:c.n,iv:c.iv,ncol:(c.idx||[]).length,map,d:b64(c.d,Int16Array),aid:(c.aid!=null?c.aid:null)});}
+  m._pose={bones,slot2idx,depth,groups,cx,cy,cz,s,clips,aoff:(m.aoff||0)};m.ntri=m.ntri||0;
+  return m;
+}
+// build GL buffers for one socketed attachment PART (assets01 geometry mounted at a parent bone). One-time.
+function prepAttachPart(part){
+  if(part._prep)return part._prep;
+  part._prep=part.g.map(g=>{
+    const pos=b64(g.p,Int16Array),uv=b64(g.uv,Int16Array),col=b64(g.col,Uint8Array),idx=b64(g.idx,Uint16Array),np=pos.length/3;
+    const uvf=new Float32Array(np*2),colf=new Float32Array(np*3),vaf=new Float32Array(np);vaf.fill(1);
+    for(let i=0;i<np;i++){uvf[i*2]=uv[i*2]/512;uvf[i*2+1]=uv[i*2+1]/512;colf[i*3]=col[i*3]/255;colf[i*3+1]=col[i*3+1]/255;colf[i*3+2]=col[i*3+2]/255;}
+    return {ti:g.ti,bl:g.bl||0,al:g.al||0,ac:g.ac||0,dec:g.dec||0,mod:g.mod||0,ws:g.ws||0,wt:g.wt||0,vat:g.vat||0,np,pos,idx,n:idx.length,
+      uvBuf:glBuf(uvf,gl.ARRAY_BUFFER),colBuf:glBuf(colf,gl.ARRAY_BUFFER),vaBuf:glBuf(vaf,gl.ARRAY_BUFFER),idxBuf:glBuf(idx,gl.ELEMENT_ARRAY_BUFFER),
+      posBuf:gl.createBuffer(),nrmBuf:gl.createBuffer(),posArr:new Float32Array(np*3),nrmArr:new Float32Array(np*3)};
+  });
+  return part._prep;
+}
+function lerpBam(a0,a1,f){a0&=0xFFFF;a1&=0xFFFF;let dd=((a1-a0+0x8000)&0xFFFF)-0x8000;return (a0+Math.round(dd*f))&0xFFFF;}
+function poseAngles(m,t){
+  const P=m._pose;
+  // REAL in-game clip: STATE.poseAnim is the clip index (integer)
+  if(typeof STATE.poseAnim==='number'&&P.clips&&P.clips[STATE.poseAnim]){
+    const c=P.clips[STATE.poseAnim],nkf=c.n,ncol=c.ncol,data=c.d,map=c.map,aoff=P.aoff;
+    const kp=t/Math.max(1,c.iv);                       // 1 keyframe every `iv` render frames (~in-game rate)
+    let k0=Math.floor(kp)%nkf; if(k0<0)k0+=nkf; const frac=kp-Math.floor(kp), k1=(k0+1)%nkf;
+    const ang={};                                       // bone rotIndex r reads clip element r+aoff (aoff skips a leading root element)
+    for(const b of P.bones){const col=map[b.rot+aoff]; if(col===undefined)continue; const o0=(k0*ncol+col)*3, o1=(k1*ncol+col)*3;
+      ang[b.rot]=[lerpBam(data[o0],data[o1],frac),lerpBam(data[o0+1],data[o1+1],frac),lerpBam(data[o0+2],data[o1+2],frac)];}
+    return ang;
+  }
+  if(STATE.poseAnim==='bind')return {};
+  const ang={};   // model-agnostic synthetic idle: gentle sway, amplitude grows toward the extremities
+  for(const b of P.bones){if(b.par===0xFF)continue;const d=P.depth[b.slot]||1,amp=Math.min(1200,200*d),ph=b.slot*0.7;
+    ang[b.rot]=[Math.round(Math.sin(t*0.030+ph)*amp*0.45),Math.round(Math.sin(t*0.021+ph*1.3)*amp),Math.round(Math.cos(t*0.026+ph)*amp*0.4)];}
+  return ang;
+}
+function skinPose(m){
+  const P=m._pose,world=poseWorld(P.bones,P.slot2idx,poseAngles(m,poseT)),s=P.s,cx=P.cx,cy=P.cy,cz=P.cz;
+  P._world=world;   // per-bone (by slot) world matrices this frame -> used to mount socketed attachments
+  for(const g of P.groups){const np=g.np,pos=g.posArr,nrm=g.nrmArr,sl=g.slot,lp=g.pos;
+    for(let i=0;i<np;i++){const M=world[sl[i]]||IDENT,x=lp[i*3],y=lp[i*3+1],z=lp[i*3+2];
+      pos[i*3]=(x*M[0]+y*M[4]+z*M[8]+M[12]-cx)*s;pos[i*3+1]=(x*M[1]+y*M[5]+z*M[9]+M[13]-cy)*s;pos[i*3+2]=(x*M[2]+y*M[6]+z*M[10]+M[14]-cz)*s;
+      nrm[i*3]=0;nrm[i*3+1]=0;nrm[i*3+2]=0;}
+    const idx=g.idx;
+    for(let t=0;t<idx.length;t+=3){const a=idx[t],b=idx[t+1],c=idx[t+2];
+      const ax=pos[a*3],ay=pos[a*3+1],az=pos[a*3+2],bx=pos[b*3],by=pos[b*3+1],bz=pos[b*3+2],ux=pos[c*3],uy=pos[c*3+1],uz=pos[c*3+2];
+      const nx=(by-ay)*(uz-az)-(bz-az)*(uy-ay),ny=(bz-az)*(ux-ax)-(bx-ax)*(uz-az),nz=(bx-ax)*(uy-ay)-(by-ay)*(ux-ax);
+      nrm[a*3]+=nx;nrm[a*3+1]+=ny;nrm[a*3+2]+=nz;nrm[b*3]+=nx;nrm[b*3+1]+=ny;nrm[b*3+2]+=nz;nrm[c*3]+=nx;nrm[c*3+1]+=ny;nrm[c*3+2]+=nz;}
+    gl.bindBuffer(gl.ARRAY_BUFFER,g.posBuf);gl.bufferData(gl.ARRAY_BUFFER,pos,gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER,g.nrmBuf);gl.bufferData(gl.ARRAY_BUFFER,nrm,gl.DYNAMIC_DRAW);}
+}
+function drawPosable(m){
+  const P=m._pose,asp=cvs.width/cvs.height,near=Math.max(0.004,STATE.dist*0.006),far=STATE.dist*8+60;
+  const Pm=M4.persp(0.92,asp,near,far),{e}=camBasis(),Vv=M4.lookAt(e,STATE.target,[0,1,0]),MVP=M4.mul(Pm,Vv);
+  gl.uniformMatrix4fv(uMVP,false,new Float32Array(MVP));gl.uniform3f(uLight,0.45,0.75,0.55);
+  skinPose(m);
+  const tex0=STATE.cmode===0;
+  function dg(g){
+    if(STATE.cmode===0){
+      if(g.ti>=0&&GTEX[g.ti]){gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,GTEX[g.ti]);gl.uniform1i(uTex,0);gl.uniform1f(uMode,0.0);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);   // characters stay crisp
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,g.ws===2?gl.CLAMP_TO_EDGE:(g.ws===1?gl.MIRRORED_REPEAT:gl.REPEAT));
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,g.wt===2?gl.CLAMP_TO_EDGE:(g.wt===1?gl.MIRRORED_REPEAT:gl.REPEAT));
+        gl.uniform3f(uTint,1,1,1);gl.uniform1f(uAlphaMode,g.bl?(g.al?1.0:(g.vat?3.0:2.0)):0.0);gl.uniform1f(uMod,g.mod?1.0:0.0);}
+      else{gl.uniform1f(uMode,1.0);gl.uniform1f(uAlphaMode,0.0);gl.uniform1f(uMod,0.0);}
+    }else if(STATE.cmode===1){gl.uniform1f(uMode,1.0);gl.uniform1f(uAlphaMode,0.0);}
+    else{gl.uniform1f(uMode,2.0);gl.uniform1f(uAlphaMode,0.0);const pc=hex2rgb(cssvar('--accent')||'#e0873c');gl.uniform3f(uFlatCol,pc[0],pc[1],pc[2]);}
+    if(g.dec){gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(-1.2,-2.0);}else{gl.disable(gl.POLYGON_OFFSET_FILL);}
+    bindA(aPos,g.posBuf,3);bindA(aNrm,g.nrmBuf,3);bindA(aUV,g.uvBuf,2);bindA(aCol,g.colBuf,3);bindA(aVA,g.vaBuf,1);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,g.idxBuf);gl.drawElements(gl.TRIANGLES,g.n,gl.UNSIGNED_SHORT,0);
+  }
+  gl.disable(gl.BLEND);gl.depthMask(true);
+  for(const g of P.groups){if(tex0&&g.bl)continue;dg(g);}
+  if(tex0){gl.enable(gl.BLEND);gl.depthMask(false);
+    for(const g of P.groups){if(!g.bl)continue;
+      // CHARACTERS have no light-shafts, so their XLU surfaces (e.g. model 24 ice-cube body 0x3d9,
+      // opaque texture, no alpha) must OVER-BLEND semi-opaque, NOT additive-glow (which made them a
+      // glassy see-through box). Additive is a level-only thing for actual light shafts.
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      dg(g);}
+    gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(true);gl.disable(gl.BLEND);}
+  gl.disable(gl.POLYGON_OFFSET_FILL);
+  // SOCKETED ATTACHMENT: mount the selected part(s) onto the character's posed bone matrices (D_80086CC4).
+  if(STATE.attach!=null && DATA.attachments && P._world){
+    const at=DATA.attachments.find(o=>o.oid===STATE.attach);
+    if(at)for(const part of at.parts){const M=P._world[part.bone]; if(!M)continue;
+      const off=part.off||[0,0,0], gs=prepAttachPart(part);
+      for(const g of gs){const np=g.np,pos=g.posArr,nrm=g.nrmArr,lp=g.pos;
+        for(let i=0;i<np;i++){const x=lp[i*3]+off[0],y=lp[i*3+1]+off[1],z=lp[i*3+2]+off[2];   // vert+offset in bone-local, then bone world matrix
+          pos[i*3]=(x*M[0]+y*M[4]+z*M[8]+M[12]-P.cx)*P.s;pos[i*3+1]=(x*M[1]+y*M[5]+z*M[9]+M[13]-P.cy)*P.s;pos[i*3+2]=(x*M[2]+y*M[6]+z*M[10]+M[14]-P.cz)*P.s;
+          nrm[i*3]=0;nrm[i*3+1]=0;nrm[i*3+2]=0;}
+        const idx=g.idx;
+        for(let t=0;t<idx.length;t+=3){const a=idx[t],b=idx[t+1],c=idx[t+2];
+          const ax=pos[a*3],ay=pos[a*3+1],az=pos[a*3+2],bx=pos[b*3],by=pos[b*3+1],bz=pos[b*3+2],ux=pos[c*3],uy=pos[c*3+1],uz=pos[c*3+2];
+          const nx=(by-ay)*(uz-az)-(bz-az)*(uy-ay),ny=(bz-az)*(ux-ax)-(bx-ax)*(uz-az),nz=(bx-ax)*(uy-ay)-(by-ay)*(ux-ax);
+          nrm[a*3]+=nx;nrm[a*3+1]+=ny;nrm[a*3+2]+=nz;nrm[b*3]+=nx;nrm[b*3+1]+=ny;nrm[b*3+2]+=nz;nrm[c*3]+=nx;nrm[c*3+1]+=ny;nrm[c*3+2]+=nz;}
+        gl.bindBuffer(gl.ARRAY_BUFFER,g.posBuf);gl.bufferData(gl.ARRAY_BUFFER,pos,gl.DYNAMIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER,g.nrmBuf);gl.bufferData(gl.ARRAY_BUFFER,nrm,gl.DYNAMIC_DRAW);
+        dg(g);}}
+  }
+  if(STATE.wire){gl.uniform1f(uMode,3.0);gl.uniform1f(uAlphaMode,0.0);const wc=hex2rgb(cssvar('--line')||'#262b36');gl.uniform3f(uFlatCol,wc[0],wc[1],wc[2]);
+    for(const g of P.groups){bindA(aPos,g.posBuf,3);bindA(aNrm,g.nrmBuf,3);bindA(aUV,g.uvBuf,2);bindA(aCol,g.colBuf,3);bindA(aVA,g.vaBuf,1);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,g.idxBuf);gl.drawElements(gl.LINES,g.n,gl.UNSIGNED_SHORT,0);}}
+}
+// ---- GL ----
+const cvs=$('#gl');
+let gl=cvs.getContext("webgl",{antialias:true,alpha:false})||cvs.getContext("experimental-webgl");
+let prog,aPos,aNrm,aUV,aCol,aVA,uMVP,uLight,uMode,uTex,uFlatCol,uAlphaMode,uTint,uMod,GTEX=[],WHITE=null;
+const STATE={cmode:0,shade:true,wire:false,spin:false,sky:true,cat:'posable',idx:0,target:[0,0,0],yaw:0.7,pitch:0.5,dist:4.4,poseAnim:'idle',animSpeed:1.0,attach:null};
+const keys={};let mesh=null;
+function initGL(){
+  if(!gl){$('#loading').textContent="WebGL unavailable";return false;}
+  const vs=`attribute vec3 aPos;attribute vec3 aNrm;attribute vec2 aUV;attribute vec3 aCol;attribute float aVA;uniform mat4 uMVP;varying vec3 vN;varying vec2 vUV;varying vec3 vC;varying float vA;void main(){vN=aNrm;vUV=aUV;vC=aCol;vA=aVA;gl_Position=uMVP*vec4(aPos,1.0);}`;
+  const fs=`precision mediump float;varying vec3 vN;varying vec2 vUV;varying vec3 vC;varying float vA;
+    uniform vec3 uLight;uniform float uMode;uniform sampler2D uTex;uniform vec3 uFlatCol;uniform float uAlphaMode;uniform vec3 uTint;uniform float uMod;
+    void main(){vec3 N=normalize(vN);float d=abs(dot(N,normalize(uLight)));float sh=0.55+0.45*d;
+    if(uMode<0.5){
+      vec4 t=texture2D(uTex,vUV); vec3 rgb=t.rgb*uTint; float shade=sh;
+      if(uMod>0.5){ rgb*=vC; shade=1.0; }   // TEXEL*SHADE: vertex colour IS the baked shade/colour (not fake lighting)
+      if(uAlphaMode<0.5){ if(t.a<0.5) discard; gl_FragColor=vec4(rgb*shade,1.0); }          // opaque cutout (alpha-compare on)
+      else if(uAlphaMode<1.5){ if(t.a<0.02) discard; gl_FragColor=vec4(rgb*shade,t.a*vA); }  // blend by texture alpha x vtx alpha
+      else if(uAlphaMode<2.5){ float a=max(max(t.r,t.g),t.b); gl_FragColor=vec4(rgb*shade,a); } // blend by luminance (light shafts)
+      else { gl_FragColor=vec4(rgb*shade,vA); }                                              // per-vertex ALPHA (glass / vtx-alpha translucency)
+      return;}
+    if(uMode<1.5){gl_FragColor=vec4(vC*sh,1.0); return;}
+    if(uMode<2.5){gl_FragColor=vec4(uFlatCol*sh,1.0); return;}
+    gl_FragColor=vec4(uFlatCol,1.0);}`;
+  function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))$('#loading').textContent="Shader: "+gl.getShaderInfoLog(o);return o;}
+  prog=gl.createProgram();gl.attachShader(prog,sh(gl.VERTEX_SHADER,vs));gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(prog);gl.useProgram(prog);
+  aPos=gl.getAttribLocation(prog,"aPos");aNrm=gl.getAttribLocation(prog,"aNrm");aUV=gl.getAttribLocation(prog,"aUV");aCol=gl.getAttribLocation(prog,"aCol");aVA=gl.getAttribLocation(prog,"aVA");
+  uMVP=gl.getUniformLocation(prog,"uMVP");uLight=gl.getUniformLocation(prog,"uLight");uMode=gl.getUniformLocation(prog,"uMode");uTex=gl.getUniformLocation(prog,"uTex");uFlatCol=gl.getUniformLocation(prog,"uFlatCol");
+  uAlphaMode=gl.getUniformLocation(prog,"uAlphaMode");uTint=gl.getUniformLocation(prog,"uTint");uMod=gl.getUniformLocation(prog,"uMod");
+  gl.enable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);
+  WHITE=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,WHITE);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,1,1,0,gl.RGB,gl.UNSIGNED_BYTE,new Uint8Array([200,200,200]));
+  return true;
+}
+function loadTextures(cb){
+  const n=DATA.textures.length;GTEX=new Array(n).fill(WHITE);let done=0;
+  const ANISO=gl.getExtension('EXT_texture_filter_anisotropic')||gl.getExtension('WEBKIT_EXT_texture_filter_anisotropic')||gl.getExtension('MOZ_EXT_texture_filter_anisotropic');
+  if(n===0){cb();return;}
+  DATA.textures.forEach((t,i)=>{const img=new Image();img.onload=()=>{const tx=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tx);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+    // MIPMAPS: densely-tiled surfaces (walls/floors mapping the texture 15-20x) minify without mipmaps into a
+    // solid aliased average -> the recurring "solid colour" complaint. Textures are stored power-of-two, so
+    // generateMipmap is safe. MIN=trilinear-mipmap smooths distance; MAG=NEAREST keeps close-up texels crisp;
+    // max anisotropy keeps grazing-angle surfaces (long floors) sharp instead of over-blurred.
+    // Only mipmap power-of-two textures — generateMipmap on NPOT silently yields an INCOMPLETE texture that
+    // renders invisible. (Build stores POT, but guard defensively so a stray NPOT never blanks geometry.)
+    const isPOT=n=>n>0&&(n&(n-1))===0; let ok=false;
+    if(isPOT(img.width)&&isPOT(img.height)){try{gl.generateMipmap(gl.TEXTURE_2D);ok=true;}catch(e){ok=false;}}
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,ok?gl.LINEAR_MIPMAP_LINEAR:gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+    if(ANISO){gl.texParameterf(gl.TEXTURE_2D,ANISO.TEXTURE_MAX_ANISOTROPY_EXT,gl.getParameter(ANISO.MAX_TEXTURE_MAX_ANISOTROPY_EXT));}
+    GTEX[i]=tx;done++;if(done===n)cb();};img.onerror=()=>{done++;if(done===n)cb();};img.src="data:image/png;base64,"+t.d;});
+  // safety: proceed after a bit even if some fail
+  setTimeout(()=>{if(done<n)cb();},4000);
+}
+let buffers=new Map();
+function glBuf(arr,type){let b=gl.createBuffer();gl.bindBuffer(type,b);gl.bufferData(type,arr,gl.STATIC_DRAW);return b;}
+// ---- STATE CONTROLLER: instanced placed props (state variants + hinge scrub) ----
+function prepProps(m,cx,cy,cz,s){
+  // partpool = unique referenced parts, LOCAL geometry (shared by instances)
+  m._pp=m.partpool.map(part=>part.g.map(g=>procGroup(decodeGroup(g),cx,cy,cz,s,true)));
+  // props = instances; urot = live user rotation delta (hinge scrub)
+  m._props=m.props.map(pr=>({pp:pr.pp,pos:pr.pos,rot:pr.rot,sc:pr.sc||[1,1,1],grp:pr.grp,st:pr.st,id:pr.id,ext:pr.ext,
+    beh:pr.beh>>>0,init:pr.init>>>0,fl:pr.fl,vis:pr.vis,urot:[0,0,0]}));
+}
+function rotMat3(ax,ay,az){ // degrees; row-vector convention identical to build_textured.rot_matrix
+  ax*=Math.PI/180;ay*=Math.PI/180;az*=Math.PI/180;
+  const cx=Math.cos(ax),sx=Math.sin(ax),cy=Math.cos(ay),sy=Math.sin(ay),cz=Math.cos(az),sz=Math.sin(az);
+  return [[cy*cz,cy*sz,-sy],[sx*sy*cz-cx*sz,sx*sy*sz+cx*cz,sx*cy],[cx*sy*cz+sx*sz,cx*sy*sz-sx*cz,cx*cy]];
+}
+function mat3mul(A,B){ // row-vector: (A·B)[i][j]=Σk A[i][k]B[k][j]
+  const C=[[0,0,0],[0,0,0],[0,0,0]];
+  for(let i=0;i<3;i++)for(let j=0;j<3;j++)C[i][j]=A[i][0]*B[0][j]+A[i][1]*B[1][j]+A[i][2]*B[2][j];
+  return C;
+}
+function propModelMat(pr,m){ // local part space -> centered/scaled viewer space (column-major GL)
+  const s=m._s,cx=m._cx,cy=m._cy,cz=m._cz, sc=pr.sc, T=pr.pos;
+  // Placement orientation R. The state hinge (urot) is a LOCAL-frame rotation of the part about its own
+  // pivot (origin) — applied to raw geometry BEFORE R, so a jaw hinges up/down in the head's frame no
+  // matter which way the head is turned. Composing v·(H·R), NOT euler-summing (which spins the world axis).
+  const u=pr.urot; let R=rotMat3(pr.rot[0],pr.rot[1],pr.rot[2]);
+  if(u[0]||u[1]||u[2])R=mat3mul(rotMat3(u[0],u[1],u[2]),R);
+  const M=new Float32Array(16);
+  M[0]=s*sc[0]*R[0][0];M[4]=s*sc[1]*R[1][0];M[8]=s*sc[2]*R[2][0];M[12]=s*(T[0]-cx);
+  M[1]=s*sc[0]*R[0][1];M[5]=s*sc[1]*R[1][1];M[9]=s*sc[2]*R[2][1];M[13]=s*(T[1]-cy);
+  M[2]=s*sc[0]*R[0][2];M[6]=s*sc[1]*R[1][2];M[10]=s*sc[2]*R[2][2];M[14]=s*(T[2]-cz);
+  M[15]=1; return M;
+}
+function uploadProps(m){
+  if(!m._pp||m._ppbuf)return;
+  m._ppbuf=m._pp.map(part=>part.map(g=>({ti:g.ti,anim:g.anim,aspd:g.aspd,dec:g.dec,bl:g.bl,al:g.al,ac:g.ac,ws:g.ws,wt:g.wt,sky:g.sky,mod:g.mod,vat:g.vat,tint:g.tint,n:g.n,
+    p:glBuf(g.pos,gl.ARRAY_BUFFER),nr:glBuf(g.nrm,gl.ARRAY_BUFFER),uv:glBuf(g.uv,gl.ARRAY_BUFFER),co:glBuf(g.col,gl.ARRAY_BUFFER),va:glBuf(g.va,gl.ARRAY_BUFFER),ix:glBuf(g.idx,gl.ELEMENT_ARRAY_BUFFER)})));
+}
+function uploadMesh(m){
+  if(m._buf)return; m._buf=m._g.map(g=>({ti:g.ti,anim:g.anim,aspd:g.aspd,dec:g.dec,bl:g.bl,al:g.al,ac:g.ac,ws:g.ws,wt:g.wt,sky:g.sky,mod:g.mod,vat:g.vat,tint:g.tint,n:g.n,
+    p:glBuf(g.pos,gl.ARRAY_BUFFER),nr:glBuf(g.nrm,gl.ARRAY_BUFFER),uv:glBuf(g.uv,gl.ARRAY_BUFFER),co:glBuf(g.col,gl.ARRAY_BUFFER),va:glBuf(g.va,gl.ARRAY_BUFFER),ix:glBuf(g.idx,gl.ELEMENT_ARRAY_BUFFER)}));
+  uploadProps(m);
+}
+function resize(){const dpr=Math.min(window.devicePixelRatio||1,2),w=cvs.clientWidth,h=cvs.clientHeight;if(cvs.width!==w*dpr||cvs.height!==h*dpr){cvs.width=w*dpr;cvs.height=h*dpr;}}
+function cssvar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function hex2rgb(x){x=x.replace('#','');if(x.length===3)x=x.split('').map(c=>c+c).join('');return[parseInt(x.slice(0,2),16)/255,parseInt(x.slice(2,4),16)/255,parseInt(x.slice(4,6),16)/255];}
+let stageBG=[0.03,0.04,0.06];function readTheme(){try{stageBG=hex2rgb(cssvar('--stage')||'#080a0f');}catch(e){}}
+function eyePos(){const cp=Math.cos(STATE.pitch),sp=Math.sin(STATE.pitch),cy=Math.cos(STATE.yaw),sy=Math.sin(STATE.yaw);return V3.add(STATE.target,V3.scale([cp*sy,sp,cp*cy],STATE.dist));}
+function camBasis(){const e=eyePos();const f=V3.norm(V3.sub(STATE.target,e));const s=V3.norm(V3.cross(f,[0,1,0]));const u=V3.cross(s,f);return{e,f,s,u};}
+function applyKeys(){const sp=STATE.dist*0.028;const{f,s}=camBasis();
+  if(keys['w'])STATE.target=V3.add(STATE.target,V3.scale(f,sp));if(keys['s'])STATE.target=V3.add(STATE.target,V3.scale(f,-sp));
+  if(keys['a'])STATE.target=V3.add(STATE.target,V3.scale(s,-sp));if(keys['d'])STATE.target=V3.add(STATE.target,V3.scale(s,sp));
+  if(keys['e'])STATE.target[1]+=sp;if(keys['q'])STATE.target[1]-=sp;}
+let animT=0,poseT=0,_lastT=0;   // animT/poseT are 30fps-EQUIVALENT frame units, advanced by real elapsed
+// time (below) so every animation — texture cycles, water, skeletal poses, panels — runs at the game's
+// intended speed regardless of the viewer's actual (variable, often 60/120/144Hz) refresh rate.
+function render(){
+  resize();
+  if(gl&&prog){
+    gl.viewport(0,0,cvs.width,cvs.height);gl.clearColor(stageBG[0],stageBG[1],stageBG[2],1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    if(STATE.spin&&!dragging)STATE.yaw+=0.0038; applyKeys();
+    if(mesh&&mesh._pose){drawPosable(mesh);}
+    else if(mesh&&mesh._buf){
+      const asp=cvs.width/cvs.height,near=Math.max(0.004,STATE.dist*0.006),far=STATE.dist*8+60;
+      const P=M4.persp(0.92,asp,near,far),{e}=camBasis(),Vv=M4.lookAt(e,STATE.target,[0,1,0]),MVP=M4.mul(P,Vv);
+      gl.uniformMatrix4fv(uMVP,false,new Float32Array(MVP));gl.uniform3f(uLight,0.45,0.75,0.55);
+      const af=Math.floor(animT/22);
+      const tex0=STATE.cmode===0;
+      function drawGroup(g){
+        let mode=STATE.cmode;
+        if(mode===0){
+          let ti=g.ti;
+          if(g.anim&&g.anim.length){const gaf=Math.floor(animT/(g.aspd||10));ti=g.anim[gaf%g.anim.length];}   // per-set speed (data f1 hold byte)
+          if(ti>=0&&GTEX[ti]){gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,GTEX[ti]);gl.uniform1i(uTex,0);gl.uniform1f(uMode,0.0);
+            // Big TILING world surfaces (walls/floors) get smooth LINEAR magnification like before — NEAREST
+            // made their low-res texels look blocky. Clamped decals/signs stay crisp NEAREST.
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,(mesh.kind==='level'&&!(g.ws===2&&g.wt===2))?gl.LINEAR:gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,g.ws===2?gl.CLAMP_TO_EDGE:(g.ws===1?gl.MIRRORED_REPEAT:gl.REPEAT));   // clamp=decals/signs, mirror=symmetric rugs
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,g.wt===2?gl.CLAMP_TO_EDGE:(g.wt===1?gl.MIRRORED_REPEAT:gl.REPEAT));
+            if(g.tint)gl.uniform3f(uTint,g.tint[0]/255,g.tint[1]/255,g.tint[2]/255);else gl.uniform3f(uTint,1,1,1);
+            gl.uniform1f(uAlphaMode, g.bl?(g.al?1.0:(g.vat?3.0:2.0)):0.0); gl.uniform1f(uMod, g.mod?1.0:0.0);}   // vat=per-vertex alpha (glass), al=texA, else luminance
+          else {gl.uniform1f(uMode,1.0);gl.uniform1f(uAlphaMode,0.0);gl.uniform1f(uMod,0.0);}
+        } else if(mode===1){gl.uniform1f(uMode,1.0);gl.uniform1f(uAlphaMode,0.0);}
+          else {gl.uniform1f(uMode,2.0);gl.uniform1f(uAlphaMode,0.0);const pc=hex2rgb(cssvar('--accent')||'#e0873c');gl.uniform3f(uFlatCol,pc[0],pc[1],pc[2]);}
+        if(g.dec){gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(-1.2,-2.0);}else{gl.disable(gl.POLYGON_OFFSET_FILL);}
+        bindA(aPos,g.p,3);bindA(aNrm,g.nr,3);bindA(aUV,g.uv,2);bindA(aCol,g.co,3);bindA(aVA,g.va,1);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,g.ix);gl.drawElements(gl.TRIANGLES,g.n,gl.UNSIGNED_SHORT,0);
+      }
+      // pass 1: opaque (defer translucent groups in textured mode)
+      gl.disable(gl.BLEND);gl.depthMask(true);
+      for(const g of mesh._buf){ if(!STATE.sky&&g.sky)continue; if(tex0&&g.bl)continue; drawGroup(g); }
+      // pass 2: translucent (light shafts, water) — blend, no depth write
+      if(tex0){
+        gl.enable(gl.BLEND);gl.depthMask(false);
+        for(const g of mesh._buf){ if(!STATE.sky&&g.sky)continue; if(!g.bl)continue;
+          // light shafts (translucent, NO alpha channel -> luminance-keyed) are bright textures that read as an
+          // opaque grey box under normal over-blend; draw them ADDITIVELY so they glow. Alpha-translucent
+          // surfaces (glass/water, has real alpha) keep normal over-blend.
+          gl.blendFunc(gl.SRC_ALPHA, (g.al||g.vat)?gl.ONE_MINUS_SRC_ALPHA:gl.ONE);
+          drawGroup(g); }
+        gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(true);gl.disable(gl.BLEND);
+      }
+      // pass 3: INSTANCED PROPS (placed objects) — each drawn with its own model matrix so state
+      // variants can be toggled and hinges (dino jaw / doors) scrubbed live.
+      if(mesh._ppbuf&&mesh._props){try{
+        for(const pr of mesh._props){ if(!pr.vis)continue; const part=mesh._ppbuf[pr.pp]; if(!part)continue;
+          gl.uniformMatrix4fv(uMVP,false,M4.mul(MVP,propModelMat(pr,mesh)));
+          gl.disable(gl.BLEND);gl.depthMask(true);
+          for(const g of part){ if(tex0&&g.bl)continue; drawGroup(g); }
+          if(tex0){ gl.enable(gl.BLEND);gl.depthMask(false);
+            for(const g of part){ if(!g.bl)continue; gl.blendFunc(gl.SRC_ALPHA,(g.al||g.vat)?gl.ONE_MINUS_SRC_ALPHA:gl.ONE); drawGroup(g); }
+            gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(true);gl.disable(gl.BLEND); }
+        }
+        }catch(e){console.error('prop draw',e);mesh._props=null;}
+        gl.uniformMatrix4fv(uMVP,false,new Float32Array(MVP));   // restore camera MVP for wire pass
+      }
+      gl.disable(gl.POLYGON_OFFSET_FILL);
+      if(STATE.wire){gl.uniform1f(uMode,3.0);gl.uniform1f(uAlphaMode,0.0);const wc=hex2rgb(cssvar('--line')||'#262b36');gl.uniform3f(uFlatCol,wc[0],wc[1],wc[2]);
+        for(const g of mesh._buf){bindA(aPos,g.p,3);bindA(aNrm,g.nr,3);bindA(aUV,g.uv,2);bindA(aCol,g.co,3);bindA(aVA,g.va,1);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,g.ix);gl.drawElements(gl.LINES,g.n,gl.UNSIGNED_SHORT,0);}}
+    }
+    $('#cDist').textContent=STATE.dist.toFixed(2);
+    const _now=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+    if(!_lastT)_lastT=_now; const _dt=Math.min(0.1,(_now-_lastT)/1000); _lastT=_now;   // clamp dt (tab-away)
+    animT+=_dt*30; poseT+=_dt*30*STATE.animSpeed;   // 30 = N64 target fps -> FPS-independent playback
+  }
+  requestAnimationFrame(render);
+}
+function bindA(attr,buf,size){if(attr<0)return;gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.enableVertexAttribArray(attr);gl.vertexAttribPointer(attr,size,gl.FLOAT,false,0,0);}
+// ---- UI ----
+function curList(){const arr=DATA[STATE.cat]||[];const q=($('#search').value||'').toLowerCase();return arr.map((m,i)=>({m,i})).filter(o=>!q||o.m.name.toLowerCase().includes(q));}
+function resetCam(){STATE.target=[0,0,0];STATE.yaw=0.7;STATE.pitch=0.5;STATE.dist=4.4;}
+function populateAnimSel(m){
+  const sel=$('#animSel'); if(!sel)return; sel.innerHTML='';
+  const nclip=(m._pose&&m._pose.clips)?m._pose.clips.length:0;
+  const add=(v,l)=>{const o=document.createElement('option');o.value=v;o.textContent=l;sel.appendChild(o);};
+  add('idle','Idle (synthetic)'); add('bind','Bind pose');   // idle first = the default
+  // CONKER player-control moves: animId (traced from the player controller) -> clip via stored raw pack index (aid)
+  if(m.id>=1&&m.id<=4&&m._pose&&m._pose.clips){
+    const MOVES=[['Idle',15],['Jump takeoff',55],['Airborne / rising',233],['Fall',56],['Tailspin hover',75],
+      ['High jump',59],['Land',9],['Launch / spring',50],['Water dive-in',209],['Swim stroke',206],['Swim surface',34]];
+    const byAid={}; m._pose.clips.forEach((c,i)=>{if(c.aid!=null&&byAid[c.aid]===undefined)byAid[c.aid]=i;});
+    for(const mv of MOVES){const ci=byAid[mv[1]]; if(ci!==undefined)add('clip'+ci,'▶ '+mv[0]);}
+  }
+  for(let i=0;i<nclip;i++)add('clip'+i,'Clip '+(i+1));
+  STATE.poseAnim='idle'; sel.value='idle';   // always default to the synthetic idle, even when real clips exist
+  sel.onchange=()=>{const v=sel.value;STATE.poseAnim=v.slice(0,4)==='clip'?parseInt(v.slice(4),10):v;animT=0;poseT=0;updatePoseNote(m);};
+  const sp=$('#animSpeed'),spv=$('#animSpeedVal');
+  if(sp){sp.value=STATE.animSpeed;if(spv)spv.innerHTML=(+STATE.animSpeed).toFixed(2)+'&times;';
+    sp.oninput=()=>{STATE.animSpeed=+sp.value;if(spv)spv.innerHTML=(+sp.value).toFixed(2)+'&times;';};}
+  populateAttachSel(m);
+  updatePoseNote(m);
+}
+// socketed-attachment picker: mount any part from the D_80086CC4 attachment table onto this character's bone
+function populateAttachSel(m){
+  const sel=$('#attachSel'); if(!sel)return; sel.innerHTML='';
+  const row=sel.closest('.tg'); const add=(v,l)=>{const o=document.createElement('option');o.value=v;o.textContent=l;sel.appendChild(o);};
+  // The D_80086CC4 attachment table's bone indices are CONKER's skeleton slots -> only valid on Conker (models 1-4).
+  const isConker=(m.id>=1&&m.id<=4);
+  if(row)row.style.display=isConker?'':'none';
+  add('','None');
+  if(isConker)for(const o of (DATA.attachments||[])){const p=o.parts[0];
+    add(o.oid,'obj'+o.oid+' · model '+p.model+' @bone '+p.bone+(o.parts.length>1?(' +'+(o.parts.length-1)):''));}
+  STATE.attach=null; sel.value='';
+  sel.onchange=()=>{STATE.attach=sel.value?parseInt(sel.value,10):null;};
+}
+function updatePoseNote(m){
+  const el=$('#poseNote'); if(!el)return;
+  const nclip=(m._pose&&m._pose.clips)?m._pose.clips.length:0;
+  el.textContent = typeof STATE.poseAnim==='number' ? ('real in-game animation · clip '+(STATE.poseAnim+1)+' / '+nclip)
+                 : STATE.poseAnim==='bind' ? 'bind pose (rest)' : 'synthetic idle sway';
+  $('#foot-note').textContent = nclip ? ('live rig · '+nclip+' real in-game clips') : 'live skeletal rig (no clip pack matched)';
+}
+function selectModel(cat,i){STATE.cat=cat;STATE.idx=i;const m=DATA[cat][i];updatePoseRow();
+  if(cat==='posable'){preparePosable(m);mesh=m;resetCam();hideStates();
+    document.querySelectorAll('.item').forEach(el=>el.classList.toggle('on',el.dataset.cat===cat&&+el.dataset.i===i));
+    $('#bName').textContent=m.name;$('#sSrc').textContent='assets01 · skeleton';$('#sTris').textContent=fmt(m.ntri);
+    const nt=new Set();for(const g of m.groups){if(g.ti>=0)nt.add(g.ti);}
+    $('#sTex').textContent=nt.size+' tex · '+m.bones.length+' bones';$('#sKind').textContent='rigged character';
+    populateAnimSel(m);return;}
+  prep(m);uploadMesh(m);mesh=m;resetCam();try{buildStatesPanel(m);}catch(e){console.error('statesPanel',e);hideStates();}
+  document.querySelectorAll('.item').forEach(el=>el.classList.toggle('on',el.dataset.cat===cat&&+el.dataset.i===i));
+  $('#bName').textContent=m.name;$('#sSrc').textContent=m.src||'—';$('#sTris').textContent=fmt(m.ntri);
+  const nt=new Set();let anim=false;for(const g of m.groups){if(g.ti>=0)nt.add(g.ti);if(g.anim)anim=true;}
+  $('#sTex').textContent=nt.size+(anim?' +anim':'');$('#sKind').textContent=m.kind;
+  $('#foot-note').textContent=(m.kind==='level'?'world geometry + textures':'character / object')+(anim?' · animated water/lava':'');}
+STATE.states=false;
+function hideStates(){const t=$('#statesTg');if(t)t.style.display='none';const p=$('#states');if(p)p.style.display='none';STATE.states=false;const b=$('#tStates');if(b){b.textContent='Off';b.classList.remove('on');}}
+function buildStatesPanel(m){
+  const panel=$('#states'),tg=$('#statesTg'); if(!panel||!tg)return;
+  if(!m._props||!m._props.length){hideStates();return;}
+  tg.style.display='';
+  const groups={}; m._props.forEach((pr,i)=>{(groups[pr.grp]=groups[pr.grp]||[]).push(i);});
+  let html='<span class="close" id="statesClose">&times;</span><div class="hd">LEVEL STATES / SWAPS</div>';
+  let shown=0;
+  // Objects rotate about a LOCAL-frame euler component (decomp: func_151151FC/1511515C/151150BC each hinge
+  // a different axis 0x0/0x4/0x8 of the actor). We expose all three; the correct one hinges the part in
+  // its own frame (a jaw goes up/down via pitch, not sideways via yaw).
+  const AX=[['pitch (X)','tilt up / down'],['yaw (Y)','swing left / right'],['roll (Z)','bank / spin']];
+  const behName=b=>b===0x35?'HINGE (jaw / door)':('beh 0x'+b.toString(16));
+  // Sort so the MOVABLE objects surface first: hinges (jaw/doors, beh 0x35), then co-located swaps, then
+  // other behaviours/swap-states -- otherwise the dino jaw is buried among all the placed props.
+  const behOf=gid=>{const b=groups[gid].map(i=>m._props[i].beh>>>0).find(b=>b!==0xffffffff&&b!==0);return b||0;};
+  const prio=gid=>{const ix=groups[gid];if(behOf(gid)===0x35)return 0;if(ix.length>1)return 1;if(ix.some(i=>m._props[i].st!==0))return 2;if(behOf(gid))return 3;return 4;};
+  Object.keys(groups).sort((a,b)=>prio(a)-prio(b)).forEach(gid=>{
+    const idxs=groups[gid];
+    const anyDyn=idxs.some(i=>m._props[i].fl&1);
+    const anyBeh=idxs.some(i=>m._props[i].beh!==0xffffffff&&m._props[i].beh!==0);
+    const anyAlt=idxs.some(i=>m._props[i].st!==0);   // a non-default state = a swap alternate, even if not co-located
+    const anyRt=idxs.some(i=>{const p=m._props[i];return p.pos[0]===0&&p.pos[1]===0&&p.pos[2]===0;});   // runtime/script-placed object worth toggling
+    if(idxs.length<2 && !anyDyn && !anyBeh && !anyAlt && !anyRt) return;   // skip only plain static single props
+    shown++;
+    const pr0=m._props[idxs[0]], tags=[];
+    if(pr0.ext)tags.push('external'); if(anyDyn)tags.push('dynamic'); if(anyBeh)tags.push(behName(behOf(gid))); if(anyAlt&&idxs.length<2)tags.push('swap-state');
+    const atOrigin=pr0.pos[0]===0&&pr0.pos[1]===0&&pr0.pos[2]===0;
+    const where=atOrigin?'runtime-placed':('pos '+pr0.pos.map(v=>v|0).join(', '));
+    const kind=pr0.ext?'obj':'part';
+    html+='<div class="grp"><div class="lbl">'+kind+' '+(pr0.id!=null?pr0.id:gid)+' · '+where+(tags.length?' · '+tags.join(' · '):'')+' <span class="rst" data-grp="'+gid+'">reset</span></div>';
+    if(idxs.length>1){ html+='<div class="hint">variants (toggle any / all):</div><div>';
+      idxs.forEach(i=>{const p=m._props[i];html+='<span class="chip'+(p.vis?' on':'')+'" data-i="'+i+'">state '+p.st+'</span>';});
+      html+='</div>'; }
+    html+='<div class="hint">hinge (local axis):</div>';
+    AX.forEach((a,ax)=>{ html+='<label class="axl" title="'+a[1]+'">'+a[0]+'<span class="v" data-vg="'+gid+'" data-va="'+ax+'">0&deg;</span>'
+      +'<input type="range" min="-180" max="180" step="1" value="0" data-grp="'+gid+'" data-ax="'+ax+'"></label>'; });
+    html+='</div>';
+  });
+  if(!shown)html+='<div class="lbl" style="padding-top:6px">no swap/dynamic objects here — this level is static.</div>';
+  panel.innerHTML=html;
+  const cl=$('#statesClose'); if(cl)cl.onclick=()=>hideStates();
+  // variant chips: INDEPENDENT toggles — any number can be on at once (overlapping swaps allowed)
+  panel.querySelectorAll('.chip').forEach(ch=>{ch.onclick=()=>{const i=+ch.dataset.i;m._props[i].vis=m._props[i].vis?0:1;ch.classList.toggle('on',!!m._props[i].vis);};});
+  panel.querySelectorAll('input[type=range]').forEach(sl=>{sl.oninput=()=>{const gid=sl.dataset.grp,ax=+sl.dataset.ax,v=+sl.value;
+    (groups[gid]||[]).forEach(i=>{m._props[i].urot[ax]=v;});
+    const vs=panel.querySelector('.v[data-vg="'+gid+'"][data-va="'+ax+'"]');if(vs)vs.innerHTML=v+'&deg;';};});
+  panel.querySelectorAll('.rst').forEach(r=>{r.onclick=()=>{const gid=r.dataset.grp;(groups[gid]||[]).forEach(i=>{m._props[i].urot=[0,0,0];});
+    panel.querySelectorAll('input[data-grp="'+gid+'"]').forEach(sl=>{sl.value=0;});
+    panel.querySelectorAll('.v[data-vg="'+gid+'"]').forEach(vs=>vs.innerHTML='0&deg;');};});
+  panel.style.display=STATE.states?'block':'none';
+}
+const _bStates=$('#tStates');
+if(_bStates)_bStates.onclick=()=>{STATE.states=!STATE.states;_bStates.textContent=STATE.states?'On':'Off';_bStates.classList.toggle('on',STATE.states);$('#states').style.display=STATE.states?'block':'none';};
+function updatePoseRow(){const r=$('#poserow');if(r)r.style.display=(STATE.cat==='posable')?'':'none';}
+function buildTabs(){const t=$('#tabs');t.innerHTML='';CATS.forEach(c=>{const b=document.createElement('div');b.className='tab'+(c.id===STATE.cat?' on':'');
+  b.innerHTML=`${c.label} <span class="c">${(DATA[c.id]||[]).length}</span>`;b.onclick=()=>{STATE.cat=c.id;buildTabs();buildList();const l=curList();if(l.length)selectModel(c.id,l[0].i);};t.appendChild(b);});}
+function buildList(){const L=$('#list');L.innerHTML='';curList().forEach(({m,i})=>{const b=document.createElement('button');b.className='item';b.dataset.cat=STATE.cat;b.dataset.i=i;
+  b.innerHTML=`<span class="sw"></span><span class="nm">${m.name}</span><span class="tc">${fmt(m.ntri)}▲</span>`;b.onclick=()=>selectModel(STATE.cat,i);if(i===STATE.idx)b.classList.add('on');L.appendChild(b);});}
+$('#search').addEventListener('input',buildList);
+function tog(id,key,on,off){const b=$('#'+id);b.onclick=()=>{STATE[key]=!STATE[key];b.classList.toggle('on',STATE[key]);b.textContent=STATE[key]?on:off;};}
+tog('tShade','shade','On','Off');tog('tWire','wire','On','Off');tog('tSpin','spin','On','Off');tog('tSky','sky','On','Off');
+const CMODE=['Textured','Vertex','Plain'];const bColor=$('#tColor');
+bColor.onclick=()=>{STATE.cmode=(STATE.cmode+1)%3;bColor.textContent=CMODE[STATE.cmode];bColor.classList.toggle('on',STATE.cmode===0);};
+// interaction
+let dragging=false,pmode='orbit',lx=0,ly=0;
+cvs.addEventListener('pointerdown',e=>{dragging=true;pmode=(e.button===2||e.button===1||e.shiftKey)?'pan':'orbit';lx=e.clientX;ly=e.clientY;cvs.setPointerCapture(e.pointerId);e.preventDefault();});
+cvs.addEventListener('contextmenu',e=>e.preventDefault());
+cvs.addEventListener('pointermove',e=>{if(!dragging)return;const dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;
+  if(pmode==='orbit'){STATE.yaw-=dx*0.008;STATE.pitch+=dy*0.008;STATE.pitch=Math.max(-1.54,Math.min(1.54,STATE.pitch));}else{const{s,u}=camBasis();const k=STATE.dist*0.0018;STATE.target=V3.add(STATE.target,V3.add(V3.scale(s,-dx*k),V3.scale(u,dy*k)));}});
+addEventListener('pointerup',()=>{dragging=false;});
+cvs.addEventListener('wheel',e=>{e.preventDefault();STATE.dist*=Math.exp(Math.sign(e.deltaY)*0.12);STATE.dist=Math.max(0.02,Math.min(80,STATE.dist));},{passive:false});
+cvs.addEventListener('dblclick',resetCam);
+// ---- surface / texture inspector (GPU colour-picking) ----
+STATE.inspect=true;   // inspect ON by default
+let pickFB=null,pickTex=null,pickRB=null,pickW=0,pickH=0;
+function currentMVP(){const asp=cvs.width/cvs.height,near=Math.max(0.004,STATE.dist*0.006),far=STATE.dist*8+60;
+  const P=M4.persp(0.92,asp,near,far),{e}=camBasis(),Vv=M4.lookAt(e,STATE.target,[0,1,0]);return M4.mul(P,Vv);}
+function ensurePick(w,h){
+  if(!pickFB){pickFB=gl.createFramebuffer();pickTex=gl.createTexture();pickRB=gl.createRenderbuffer();}
+  if(w!==pickW||h!==pickH){
+    gl.bindTexture(gl.TEXTURE_2D,pickTex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+    gl.bindRenderbuffer(gl.RENDERBUFFER,pickRB);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,w,h);pickW=w;pickH=h;}
+  gl.bindFramebuffer(gl.FRAMEBUFFER,pickFB);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,pickTex,0);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,pickRB);
+}
+// Flat list of every clickable group THIS FRAME: pose groups, or terrain _buf + each visible instanced
+// prop group (with its own MVP). pickAt and showInspect index the SAME list so a picked id maps back
+// correctly — this is what lets you inspect PROPS (dino jaw, dock), which used to be unpickable.
+let _pickGroups=[];
+function buildPickList(){
+  _pickGroups=[];
+  if(mesh._pose){ for(const g of mesh._pose.groups)_pickGroups.push({g,pose:true,mvp:null,prop:null}); return; }
+  const base=currentMVP();
+  if(mesh._buf){ for(const g of mesh._buf)_pickGroups.push({g,pose:false,mvp:base,prop:null}); }
+  if(mesh._ppbuf&&mesh._props){ try{
+    for(const pr of mesh._props){ if(!pr.vis)continue; const part=mesh._ppbuf[pr.pp]; if(!part)continue;
+      const M=M4.mul(base,propModelMat(pr,mesh));
+      for(const g of part)_pickGroups.push({g,pose:false,mvp:M,prop:pr}); }
+  }catch(e){} }
+}
+function pickAt(cssX,cssY){
+  if(!mesh)return -1;
+  const dpr=Math.min(window.devicePixelRatio||1,2),w=cvs.width,h=cvs.height;ensurePick(w,h);
+  gl.viewport(0,0,w,h);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);gl.disable(gl.BLEND);gl.depthMask(true);gl.disable(gl.POLYGON_OFFSET_FILL);
+  gl.uniform1f(uMode,3.0);gl.uniform1f(uAlphaMode,0.0);
+  buildPickList();
+  for(let i=0;i<_pickGroups.length;i++){const e=_pickGroups[i],g=e.g,id=i+1;
+    gl.uniformMatrix4fv(uMVP,false,new Float32Array(e.mvp||currentMVP()));
+    gl.uniform3f(uFlatCol,(id&0xFF)/255,((id>>8)&0xFF)/255,((id>>16)&0xFF)/255);
+    const pb=e.pose?g.posBuf:g.p,nb=e.pose?g.nrmBuf:g.nr,ub=e.pose?g.uvBuf:g.uv,cb=e.pose?g.colBuf:g.co,vb=e.pose?g.vaBuf:g.va,ib=e.pose?g.idxBuf:g.ix;
+    bindA(aPos,pb,3);bindA(aNrm,nb,3);bindA(aUV,ub,2);bindA(aCol,cb,3);bindA(aVA,vb,1);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);gl.drawElements(gl.TRIANGLES,g.n,gl.UNSIGNED_SHORT,0);}
+  const px=Math.round(cssX*dpr),py=Math.round(cssY*dpr),pix=new Uint8Array(4);
+  gl.readPixels(Math.max(0,Math.min(w-1,px)),Math.max(0,Math.min(h-1,h-1-py)),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pix);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  return (pix[0]|(pix[1]<<8)|(pix[2]<<16))-1;
+}
+function fmtName(fmt,siz,flag){
+  if(flag===0x400000||(fmt===2&&siz===1))return 'CI8 (256-colour)';
+  if(flag===0x800000||(fmt===2&&siz===0))return 'CI4 (16-colour)';
+  if(fmt===0&&siz===2)return 'RGBA16'; if(fmt===0&&siz===3)return 'RGBA32';
+  if(fmt===3&&siz===2)return 'IA16'; if(fmt===3&&siz===1)return 'IA8'; if(fmt===3&&siz===0)return 'IA4';
+  if(fmt===4&&siz===1)return 'I8'; if(fmt===4&&siz===0)return 'I4'; return 'fmt'+fmt+' siz'+siz;
+}
+function showInspect(gi){
+  const panel=$('#inspect');
+  if(gi<0||gi>=_pickGroups.length){panel.style.display='none';return;}
+  const ent=_pickGroups[gi],g=ent.g,ti=g.ti;
+  const R=(k,v)=>'<div class="row"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>';
+  const wrap=x=>x===2?'clamp':(x===1?'mirror':'repeat');
+  let img='',rows='';
+  if(ti>=0&&DATA.textures[ti]){
+    img='<img src="data:image/png;base64,'+DATA.textures[ti].d+'">';
+    const tm=(DATA.texmeta&&DATA.texmeta[ti])||[];
+    rows+=R('texture id','0x'+(tm[0]||0).toString(16));
+    rows+=R('size',DATA.textures[ti].w+'×'+DATA.textures[ti].h);
+    rows+=R('format',fmtName(tm[1],tm[2],tm[3]));
+    rows+=R('asset bytes',(tm[4]||'?'));
+  } else rows+=R('texture','none (flat colour)');
+  const fl=[];
+  if(g.rt)fl.push('runtime-bound'); if(g.anim&&g.anim.length)fl.push('animated·'+g.anim.length+'fr');
+  if(g.bl)fl.push('translucent'); if(g.al)fl.push('has-alpha'); if(g.dec)fl.push('decal'); if(g.mod)fl.push('shade-mod');
+  rows+=R('wrap S/T',wrap(g.ws)+' / '+wrap(g.wt));
+  rows+=R('flags',fl.length?fl.join(', '):'—');
+  rows+=R('triangles',(g.n/3)|0);
+  if(ent.prop){const pr=ent.prop; rows+=R('placed object',(pr.ext?'external · assets03['+pr.id+']':'part '+pr.id)+(pr.st?(' · state '+pr.st):''));}
+  let warn='';
+  if(ti<0&&g.rt)warn='<div class="warn">Runtime-bound: the game binds this texture from code at spawn — it is NOT in the static level data, so it renders as flat colour. Crowd / light-shafts / glass are this type.</div>';
+  else if(ti<0)warn='<div class="warn">Untextured: this surface uses only vertex colour (no texture in the display list).</div>';
+  panel.innerHTML='<div class="close" id="inspClose">×</div><div class="hd">SURFACE · TEXTURE</div>'+img+rows+warn;
+  panel.style.display='block';
+  $('#inspClose').onclick=()=>{panel.style.display='none';};
+}
+const bInspect=$('#tInspect');
+if(bInspect)bInspect.onclick=()=>{STATE.inspect=!STATE.inspect;bInspect.textContent=STATE.inspect?'On':'Off';
+  bInspect.classList.toggle('on',STATE.inspect);$('#inspecthint').style.display=STATE.inspect?'block':'none';
+  if(!STATE.inspect)$('#inspect').style.display='none';};
+if(bInspect){bInspect.textContent=STATE.inspect?'On':'Off';bInspect.classList.toggle('on',STATE.inspect);}   // reflect default-on
+if($('#inspecthint'))$('#inspecthint').style.display=STATE.inspect?'block':'none';
+let downPX=0,downPY=0;
+cvs.addEventListener('pointerdown',e=>{downPX=e.clientX;downPY=e.clientY;},true);
+cvs.addEventListener('pointerup',e=>{
+  if(!STATE.inspect)return;
+  const dx=e.clientX-downPX,dy=e.clientY-downPY;
+  if(dx*dx+dy*dy<25){const r=cvs.getBoundingClientRect();showInspect(pickAt(e.clientX-r.left,e.clientY-r.top));}
+});
+addEventListener('keydown',e=>{if(document.activeElement===$('#search'))return;const k=e.key.toLowerCase();if('wasdqe'.includes(k)){keys[k]=true;e.preventDefault();}});
+addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
+new MutationObserver(readTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+matchMedia('(prefers-color-scheme:dark)').addEventListener('change',readTheme);
+// boot
+readTheme();
+if(!(DATA[STATE.cat]||[]).length){for(const c of CATS){if((DATA[c.id]||[]).length){STATE.cat=c.id;break;}}}
+const ok=initGL();buildTabs();buildList();
+if(ok){
+  GTEX=new Array(DATA.textures.length).fill(WHITE);
+  const f=curList();if(f.length)selectModel(STATE.cat,f[0].i);
+  render();
+  loadTextures(()=>{$('#loading').style.display='none';});
+}
+</script>

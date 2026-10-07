@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Conker Asset Explorer</title>
+<meta name="description" content="Explore the levels, characters, animations and textures of Conker's Bad Fur Day, extracted in your browser from your own ROM.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%23e0873c%27/%3E%3Cpath d=%27M9 22V10h5.5a4 4 0 0 1 0 8H9m7 0 6 4%27 fill=%27none%27 stroke=%27%230f1218%27 stroke-width=%272.6%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{--bg:#0f1218;--stage:#080a0f;--panel:#161a23;--panel-2:#1c2130;--line:#262b36;--line-soft:#1e232e;
+    --ink:#e7ecf3;--ink-dim:#9aa5b6;--ink-faint:#5f6b7e;--accent:#e0873c;--accent-2:#f2a95c;--data:#8fbfa9;
+    --mono:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;}
+  @media (prefers-color-scheme:light){:root{--bg:#e9e6dd;--stage:#d7d3c6;--panel:#f3f0e8;--panel-2:#eae6db;--line:#cdc7b6;--line-soft:#dbd6c8;--ink:#20242c;--ink-dim:#5a6472;--ink-faint:#8a93a1;--accent:#b8632a;--accent-2:#a9551f;--data:#3f7a5f;}}
+  :root[data-theme="dark"]{--bg:#0f1218;--stage:#080a0f;--panel:#161a23;--panel-2:#1c2130;--line:#262b36;--line-soft:#1e232e;--ink:#e7ecf3;--ink-dim:#9aa5b6;--ink-faint:#5f6b7e;--accent:#e0873c;--accent-2:#f2a95c;--data:#8fbfa9;}
+  :root[data-theme="light"]{--bg:#e9e6dd;--stage:#d7d3c6;--panel:#f3f0e8;--panel-2:#eae6db;--line:#cdc7b6;--line-soft:#dbd6c8;--ink:#20242c;--ink-dim:#5a6472;--ink-faint:#8a93a1;--accent:#b8632a;--accent-2:#a9551f;--data:#3f7a5f;}
+  *{box-sizing:border-box}html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+  #app{display:grid;grid-template-columns:290px 1fr;grid-template-rows:auto 1fr auto;grid-template-areas:"head head" "rail stage" "rail foot";height:100vh;gap:1px;background:var(--line-soft)}
+  header{grid-area:head;background:var(--panel);display:flex;align-items:center;gap:16px;padding:11px 18px;border-bottom:1px solid var(--line)}
+  .brand{display:flex;flex-direction:column;gap:2px}
+  .brand .k{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent)}
+  .brand h1{margin:0;font-family:var(--mono);font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .brand h1 b{color:var(--ink-dim);font-weight:500}
+  header .spacer{flex:1}
+  .rom-chip{font-family:var(--mono);font-size:11px;color:var(--ink-dim);border:1px solid var(--line);border-radius:100px;padding:5px 11px;display:flex;gap:8px;align-items:center;white-space:nowrap}
+  .rom-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--data);box-shadow:0 0 8px var(--data)}
+  .rail{grid-area:rail;background:var(--panel);display:flex;flex-direction:column;min-height:0}
+  .tabs{display:flex;flex-wrap:wrap;gap:2px;padding:10px 10px 0}
+  .tab{flex:1 1 28%;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:12px;padding:8px 6px;text-align:center;cursor:pointer;color:var(--ink-dim);background:transparent;border:1px solid transparent;border-bottom:none;border-radius:7px 7px 0 0}
+  .tab.on{color:var(--ink);background:var(--panel-2);border-color:var(--line)}
+  .tab .c{color:var(--ink-faint);font-size:10.5px}
+  .searchwrap{padding:9px 10px 6px}
+  #search{width:100%;font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:7px 10px}
+  #search:focus{outline:2px solid var(--accent-2);outline-offset:1px}
+  .list{flex:1;overflow-y:auto;padding:2px 8px 8px;display:flex;flex-direction:column;gap:3px}
+  .item{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;cursor:pointer;border:1px solid transparent;background:transparent;color:var(--ink-dim);text-align:left;font-family:var(--mono);font-size:12px;width:100%}
+  .item:hover{background:var(--panel-2);color:var(--ink)}
+  .item.on{background:var(--panel-2);border-color:var(--line);color:var(--ink)}
+  .item .sw{width:8px;height:8px;border-radius:2px;flex:none;background:var(--ink-faint)}
+  .item.on .sw{background:var(--accent);box-shadow:0 0 7px var(--accent)}
+  .item .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .tc{color:var(--ink-faint);font-size:11px;font-variant-numeric:tabular-nums}
+  .item.on .tc{color:var(--data)}
+  .controls{border-top:1px solid var(--line-soft);padding:11px 12px;display:flex;flex-direction:column;gap:8px}
+  .tgrow{display:flex;gap:6px;flex-wrap:wrap}
+  .tg{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11.5px;color:var(--ink-dim)}
+  .tg button{font-family:var(--mono);font-size:11px;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
+  .tg select{font-family:var(--mono);font-size:11px;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:4px 8px;cursor:pointer;max-width:150px}
+  .tg button.on{background:var(--accent);border-color:var(--accent);color:#111}
+  .tg button:focus-visible{outline:2px solid var(--accent-2);outline-offset:2px}
+  .help{font-family:var(--mono);font-size:10.5px;line-height:1.75;color:var(--ink-faint)}
+  .help b{color:var(--ink-dim);font-weight:600}
+  .stage{grid-area:stage;position:relative;background:radial-gradient(130% 130% at 50% 12%,color-mix(in srgb,var(--stage) 82%,var(--panel)) 0%,var(--stage) 72%);overflow:hidden;min-width:0;min-height:0}
+  #gl{display:block;width:100%;height:100%;cursor:grab}#gl:active{cursor:grabbing}
+  .badge{position:absolute;left:15px;top:13px;font-family:var(--mono);font-size:11px;color:var(--ink-faint);pointer-events:none}
+  .badge .hl{color:var(--accent)}
+  .campill{position:absolute;right:14px;bottom:12px;font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);background:color-mix(in srgb,var(--panel) 70%,transparent);border:1px solid var(--line-soft);border-radius:7px;padding:5px 9px;pointer-events:none}
+  .campill b{color:var(--data)}
+  .loading{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:var(--mono);font-size:12px;color:var(--ink-dim)}
+  .inspect{position:absolute;left:14px;top:14px;width:220px;font-family:var(--mono);font-size:11px;color:var(--ink);background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line);border-radius:9px;padding:11px 12px;box-shadow:0 6px 22px rgba(0,0,0,.28)}
+  .inspect img{width:100%;image-rendering:pixelated;border:1px solid var(--line);border-radius:5px;background:#111;margin-bottom:8px;display:block}
+  .inspect .row{display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-top:1px solid var(--line-soft)}
+  .inspect .row .k{color:var(--ink-faint)}
+  .inspect .row .v{color:var(--data);text-align:right;word-break:break-all}
+  .inspect .hd{color:var(--accent);font-size:11.5px;margin-bottom:7px;letter-spacing:.03em}
+  .inspect .close{position:absolute;right:8px;top:6px;cursor:pointer;color:var(--ink-faint);font-size:14px;line-height:1}
+  .inspect .warn{color:var(--accent-2);margin-top:6px;font-size:10.5px;line-height:1.35}
+  .inspecthint{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);font-family:var(--mono);font-size:11px;color:var(--ink);background:color-mix(in srgb,var(--accent) 22%,var(--panel));border:1px solid var(--accent);border-radius:20px;padding:6px 14px;pointer-events:none}
+  .statesp{position:absolute;right:14px;top:14px;width:258px;max-height:80%;overflow-y:auto;font-family:var(--mono);font-size:11px;color:var(--ink);background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--line);border-radius:9px;padding:11px 12px;box-shadow:0 6px 22px rgba(0,0,0,.28)}
+  .statesp .hd{color:var(--accent);font-size:11.5px;margin-bottom:8px;letter-spacing:.03em}
+  .statesp .grp{border-top:1px solid var(--line-soft);padding:7px 0}
+  .statesp .lbl{color:var(--ink-dim);font-size:10px;margin-bottom:4px}
+  .statesp .chip{display:inline-block;cursor:pointer;padding:2px 7px;margin:2px 3px 2px 0;border:1px solid var(--line);border-radius:5px;color:var(--ink-faint);font-size:10px;user-select:none}
+  .statesp .chip.on{background:color-mix(in srgb,var(--accent) 30%,transparent);border-color:var(--accent);color:var(--ink)}
+  .statesp input[type=range]{width:100%;margin:2px 0}
+  .statesp .axl{display:block;color:var(--ink-dim);font-size:9.5px;margin-top:3px;letter-spacing:.02em}
+  .statesp .axl .v{float:right;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+  .statesp .hint{color:var(--ink-faint);font-size:9px;margin:3px 0 1px}
+  .statesp .close{position:absolute;right:9px;top:7px;cursor:pointer;color:var(--ink-faint);font-size:15px;line-height:1}
+  .statesp .rst{cursor:pointer;color:var(--accent-2);font-size:10px;float:right}
+  .foot{grid-area:foot;background:var(--panel);border-top:1px solid var(--line);padding:8px 16px;display:flex;gap:24px;align-items:center;overflow-x:auto}
+  .stat{display:flex;flex-direction:column;gap:1px;white-space:nowrap}
+  .stat .l{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink-faint)}
+  .stat .v{font-family:var(--mono);font-size:13px;color:var(--data);font-variant-numeric:tabular-nums}
+  .stat .v.accent{color:var(--accent)}
+  .foot .spacer{flex:1}.foot .note{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);text-align:right}
+  @media (max-width:780px){#app{grid-template-columns:1fr;grid-template-rows:auto 44vh auto auto;grid-template-areas:"head" "stage" "foot" "rail"}.rail{max-height:44vh}}
+  @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+  /* --- audio player --- */
+  .audioplayer{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+    background:radial-gradient(130% 130% at 50% 12%,color-mix(in srgb,var(--stage) 82%,var(--panel)) 0%,var(--stage) 72%);z-index:5;padding:24px}
+  .ap-card{width:min(560px,90%);background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--line);border-radius:14px;
+    padding:22px 24px;box-shadow:0 10px 40px rgba(0,0,0,.32)}
+  .ap-reg{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-bottom:4px}
+  .ap-name{font-family:var(--mono);font-size:20px;color:var(--ink);font-weight:600}
+  .ap-meta{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-top:3px}
+  .ap-wave{width:100%;height:120px;margin:16px 0 6px;background:var(--stage);border:1px solid var(--line-soft);border-radius:9px;display:block}
+  .ap-seek{position:relative;height:5px;background:var(--line-soft);border-radius:3px;margin:2px 0 16px;overflow:hidden}
+  .ap-seek .fill{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--accent)}
+  .ap-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .ap-ctl button{font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:7px 13px;cursor:pointer}
+  .ap-ctl button.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .ap-ctl button.on{border-color:var(--accent);color:var(--accent)}
+  .ap-ctl label{font-family:var(--mono);font-size:11px;color:var(--ink-dim);display:flex;align-items:center;gap:5px}
+  .ap-ctl .sp{flex:1}
+  .item .sw.a-sfx{background:var(--accent)}.item .sw.a-ins{background:var(--data)}
+  .item .sw{width:8px;height:8px;border-radius:2px;flex:none}
+  /* --- texture gallery --- */
+  .checker{--chkA:#2a2f3a;--chkB:#1a1e27;background-image:linear-gradient(45deg,var(--chkA) 25%,transparent 25%,transparent 75%,var(--chkA) 75%),linear-gradient(45deg,var(--chkA) 25%,transparent 25%,transparent 75%,var(--chkA) 75%);background-size:12px 12px;background-position:0 0,6px 6px;background-color:var(--chkB)}
+  @media (prefers-color-scheme:light){.checker{--chkA:#c9c3b3;--chkB:#e4e0d4}}
+  :root[data-theme="light"] .checker{--chkA:#c9c3b3;--chkB:#e4e0d4}
+  :root[data-theme="dark"] .checker{--chkA:#2a2f3a;--chkB:#1a1e27}
+  .texgallery{position:absolute;inset:0;display:none;flex-direction:column;background:radial-gradient(130% 130% at 50% 12%,color-mix(in srgb,var(--stage) 82%,var(--panel)) 0%,var(--stage) 72%);z-index:5}
+  .tg-bar{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--panel) 70%,transparent);flex-wrap:wrap}
+  .tg-bar .ti{font-family:var(--mono);font-size:12px;color:var(--ink-dim)}
+  .tg-bar .ti b{color:var(--accent)}
+  .tg-bar .sp{flex:1}
+  .tg-bar .zg{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
+  .tg-bar input[type=range]{width:96px}
+  .tg-pager{display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:11px;color:var(--ink-dim)}
+  .tg-pager button{font-family:var(--mono);font-size:11px;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:3px 8px;cursor:pointer;line-height:1}
+  .tg-pager button:hover:not(:disabled){border-color:var(--ink-faint)}
+  .tg-pager button:disabled{opacity:.35;cursor:default}
+  .tg-pager #tgPageLbl{min-width:64px;text-align:center;font-variant-numeric:tabular-nums;color:var(--data)}
+  .tg-grid{flex:1;overflow-y:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--cell,108px),1fr));gap:11px;align-content:start}
+  .tg-cell{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;cursor:pointer;transition:border-color .12s,transform .12s;min-height:var(--cell,108px)}
+  .tg-cell:hover{border-color:var(--ink-faint);transform:translateY(-1px)}
+  .tg-cell.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .tg-cell .thumb{width:100%;height:var(--cell,108px);display:flex;align-items:center;justify-content:center}
+  .tg-cell img{max-width:100%;max-height:100%;image-rendering:pixelated;display:block}
+  .tg-cell .cap{position:absolute;left:0;right:0;bottom:0;padding:3px 6px;font-family:var(--mono);font-size:9.5px;color:var(--ink);background:linear-gradient(transparent,rgba(0,0,0,.72));display:flex;justify-content:space-between;gap:4px;pointer-events:none}
+  .tg-cell .cap .fm{color:var(--data)}
+  .tg-cell .anibadge{position:absolute;left:4px;top:4px;font-family:var(--mono);font-size:9px;color:#111;background:var(--accent-2);border-radius:4px;padding:1px 5px;letter-spacing:.02em}
+  .tg-cell .albadge{position:absolute;right:4px;top:4px;font-family:var(--mono);font-size:9px;color:var(--ink);background:color-mix(in srgb,var(--data) 40%,transparent);border:1px solid var(--data);border-radius:4px;padding:0 4px}
+  .tg-empty{grid-column:1/-1;text-align:center;color:var(--ink-faint);font-family:var(--mono);font-size:12px;padding:40px}
+  .texinspect{position:absolute;right:16px;top:66px;width:274px;max-height:calc(100% - 84px);overflow-y:auto;font-family:var(--mono);font-size:11px;color:var(--ink);background:color-mix(in srgb,var(--panel) 95%,transparent);border:1px solid var(--line);border-radius:11px;padding:13px 14px;box-shadow:0 10px 34px rgba(0,0,0,.36);z-index:6}
+  .texinspect .big{width:100%;height:200px;border:1px solid var(--line);border-radius:7px;margin-bottom:10px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .texinspect .big img{max-width:100%;max-height:100%;image-rendering:pixelated}
+  .texinspect .hd{color:var(--accent);font-size:12px;margin-bottom:9px;letter-spacing:.03em;display:flex;justify-content:space-between}
+  .texinspect .row{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid var(--line-soft)}
+  .texinspect .row .k{color:var(--ink-faint)}
+  .texinspect .row .v{color:var(--data);text-align:right;word-break:break-all}
+  .texinspect .close{cursor:pointer;color:var(--ink-faint);font-size:15px;line-height:1}
+  .texinspect .aniwrap{margin-top:11px;border-top:1px solid var(--line);padding-top:10px}
+  .texinspect .anihd{color:var(--accent-2);font-size:10.5px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center}
+  .texinspect .anihd button{font-family:var(--mono);font-size:10px;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:2px 9px;cursor:pointer}
+  .texinspect .anihd button.on{background:var(--accent);border-color:var(--accent);color:#111}
+  .texinspect .strip{display:flex;gap:4px;flex-wrap:wrap}
+  .texinspect .strip .fr{width:34px;height:34px;border:1px solid var(--line);border-radius:4px;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer}
+  .texinspect .strip .fr.on{border-color:var(--accent-2);box-shadow:0 0 0 1px var(--accent-2)}
+  .texinspect .strip .fr img{max-width:100%;max-height:100%;image-rendering:pixelated}
+
+  /* ---- ROM gate (shown until the visitor's ROM is extracted) ---- */
+  body:not(.ready) #app{visibility:hidden}
+  #gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px 16px;overflow:auto;
+    background:radial-gradient(1200px 600px at 50% -10%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 70%),var(--bg)}
+  .gate-card{width:100%;max-width:560px}
+  .gate-card .k{font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+  .gate-card h1{margin:10px 0 8px;font-size:30px;line-height:1.15;letter-spacing:-.01em;font-weight:650}
+  .gate-card h1 b{color:var(--ink-faint);font-weight:500}
+  .gate-card p{margin:0 0 18px;color:var(--ink-dim);font-size:14.5px;line-height:1.55}
+  #drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:190px;padding:28px 20px;
+    border:1.5px dashed var(--line);border-radius:14px;background:var(--panel);cursor:pointer;text-align:center;
+    transition:border-color .15s,background .15s,transform .15s}
+  #drop:hover,#drop:focus-visible,#drop.over{border-color:var(--accent);background:var(--panel-2);outline:none}
+  #drop.over{transform:scale(1.01)}
+  #drop .big{font-size:16px;font-weight:600}
+  #drop .big u{text-decoration:none;color:var(--accent)}
+  #drop .sub{font:12px/1.4 var(--mono);color:var(--ink-faint)}
+  #drop svg{width:34px;height:34px;color:var(--accent);margin-bottom:4px}
+  #gate.busy #drop{pointer-events:none;opacity:.55}
+  .gate-opts{display:flex;align-items:center;gap:8px;margin:14px 2px 0;font-size:13px;color:var(--ink-dim)}
+  .gate-opts input{accent-color:var(--accent);width:15px;height:15px;margin:0}
+  #gateProg{margin-top:18px}
+  #gateProg .track{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+  #gateBar{height:100%;width:0;background:var(--accent);transition:width .2s}
+  #gateStage{margin-top:8px;font:12px/1.4 var(--mono);color:var(--data)}
+  #gateErr{margin-top:16px;padding:11px 14px;border-radius:10px;border:1px solid color-mix(in srgb,#e5534b 45%,var(--line));
+    background:color-mix(in srgb,#e5534b 10%,var(--panel));color:var(--ink);font-size:13.5px;line-height:1.45}
+  .gate-fine{margin-top:22px;padding-top:16px;border-top:1px solid var(--line-soft);font-size:12.5px;line-height:1.55;color:var(--ink-faint)}
+  .gate-fine b{color:var(--ink-dim);font-weight:600}
+  .hbtn{font:12px var(--sans);color:var(--ink-dim);background:transparent;border:1px solid var(--line);border-radius:7px;padding:5px 10px;cursor:pointer;margin-left:10px}
+  .hbtn:hover{color:var(--ink);border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><span class="k">Rare · N64 · 2001</span><h1>Conker Asset Explorer <b>// textured geometry</b></h1></div>
+    <div class="spacer"></div>
+    <div class="rom-chip"><span class="dot"></span><span>conker.us.z64 · F3DEX2 + texture pool</span></div>
+    <button class="hbtn" id="romForget" title="Remove the saved ROM from this browser and load another">Change ROM</button>
+  </header>
+  <div class="rail">
+    <div class="tabs" id="tabs"></div>
+    <div class="searchwrap"><input id="search" placeholder="filter…" autocomplete="off" spellcheck="false"></div>
+    <div class="list" id="list"></div>
+    <div class="controls">
+      <div class="tgrow">
+        <div class="tg"><span>Color</span><button id="tColor" class="on">Textured</button></div>
+        <div class="tg"><span>Shade</span><button id="tShade" class="on">On</button></div>
+        <div class="tg"><span>Wire</span><button id="tWire">Off</button></div>
+        <div class="tg"><span>Spin</span><button id="tSpin">Off</button></div>
+        <div class="tg"><span>Sky</span><button id="tSky" class="on">On</button></div>
+        <div class="tg"><span>Triggers</span><button id="tTrig" title="Invisible trigger / zone / force-field volumes the game never draws (untextured white marker geometry). Hidden to match the ROM.">Hidden</button></div>
+        <div class="tg"><span>Inspect</span><button id="tInspect">Off</button></div>
+        <div class="tg" id="statesTg" style="display:none"><span>States</span><button id="tStates">Off</button></div>
+      </div>
+      <div class="tgrow" id="poserow" style="display:none">
+        <div class="tg"><span>Anim</span><select id="animSel"></select></div>
+        <div class="tg"><span>Attach</span><select id="attachSel"></select></div>
+        <div class="tg" id="shirtRow" style="display:none"><span>Shirt</span><select id="shirtSel"></select></div>
+        <div class="tg"><span>Speed</span><input id="animSpeed" type="range" min="0" max="3" step="0.05" value="1" style="width:80px"><span id="animSpeedVal" style="min-width:30px;color:var(--data)">1.0&times;</span></div>
+        <div class="tg" id="poseNote" style="flex:1;color:var(--ink-faint);font-size:10.5px;align-items:center">live skeletal rig</div>
+      </div>
+      <div class="tgrow" id="audiorow" style="display:none">
+        <div class="tg"><span>Show</span><button id="aAll" class="on">All</button><button id="aSfx">SFX / Voices</button><button id="aIns">Instruments</button></div>
+        <div class="tg"><span>Autoplay</span><button id="aAuto">Off</button></div>
+        <div class="tg" style="flex:1;color:var(--ink-faint);font-size:10.5px;align-items:center">VADPCM decoded live in-browser</div>
+      </div>
+      <div class="help"><b>Drag</b> orbit · <b>Wheel</b> zoom · <b>Right/Shift-drag</b> pan<br><b>W A S D</b> fly · <b>Q / E</b> down / up · <b>Dbl-click</b> reset</div>
+    </div>
+  </div>
+  <div class="stage">
+    <canvas id="gl"></canvas>
+    <div class="badge"><span class="hl" id="bName">—</span></div>
+    <div class="campill" id="campill">dist <b id="cDist">—</b></div>
+    <div class="loading" id="loading">decoding textures…</div>
+    <div class="inspect" id="inspect" style="display:none"></div>
+    <div class="inspecthint" id="inspecthint" style="display:none">click a surface to inspect its texture</div>
+    <div class="statesp" id="states" style="display:none"></div>
+    <div class="audioplayer" id="audioplayer" style="display:none">
+      <div class="ap-card">
+        <div class="ap-reg" id="apReg">—</div>
+        <div class="ap-name" id="apName">select a sound</div>
+        <div class="ap-meta" id="apMeta">2,256 samples decoded straight from the cartridge's VADPCM bank</div>
+        <canvas class="ap-wave" id="apWave"></canvas>
+        <div class="ap-seek"><div class="fill" id="apFill"></div></div>
+        <div class="ap-ctl">
+          <button class="pri" id="apPlay">▶ Play</button>
+          <button id="apStop">■ Stop</button>
+          <button id="apPrev">◀ Prev</button>
+          <button id="apNext">Next ▶</button>
+          <label><input type="checkbox" id="apLoop"> Loop</label>
+          <span class="sp"></span>
+          <label>Vol <input type="range" id="apVol" min="0" max="1" step="0.02" value="0.9" style="width:78px"></label>
+          <button id="apDl">⭳ WAV</button>
+        </div>
+      </div>
+    </div>
+    <div class="texgallery" id="texgallery">
+      <div class="tg-bar">
+        <div class="ti"><b id="tgCount">0</b> textures <span id="tgFilterName" style="color:var(--ink-faint)"></span></div>
+        <div class="tg-pager" id="tgPager">
+          <button id="tgFirst" title="first">⏮</button><button id="tgPrev" title="previous">◀</button>
+          <span id="tgPageLbl">1 / 1</span>
+          <button id="tgNext" title="next">▶</button><button id="tgLast" title="last">⏭</button>
+        </div>
+        <div class="sp"></div>
+        <div class="zg">size <input id="tgZoom" type="range" min="72" max="200" step="4" value="108"></div>
+      </div>
+      <div class="tg-grid" id="tgGrid"></div>
+      <div class="texinspect" id="texinspect" style="display:none"></div>
+    </div>
+  </div>
+  <div class="foot">
+    <div class="stat"><span class="l">Source</span><span class="v accent" id="sSrc">—</span></div>
+    <div class="stat"><span class="l">Triangles</span><span class="v" id="sTris">—</span></div>
+    <div class="stat"><span class="l">Textures</span><span class="v" id="sTex">—</span></div>
+    <div class="stat"><span class="l">Type</span><span class="v" id="sKind">—</span></div>
+    <div class="spacer"></div>
+    <div class="note" id="foot-note">geometry + textures decoded from cartridge</div>
+  </div>
+</div>
+
+<div id="gate">
+  <div class="gate-card">
+    <div class="k">Rare · N64 · 2001</div>
+    <h1>Conker Asset Explorer <b>// bring your own ROM</b></h1>
+    <p>Browse every level, character, prop, animation and texture in <i>Conker's Bad Fur Day</i>, pulled straight out of your own cartridge dump.</p>
+    <div id="drop" role="button" tabindex="0" aria-label="Choose your Conker ROM file">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4m0 0-4 4m4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+      <div class="big">Drop your ROM here or <u>choose a file</u></div>
+      <div class="sub">Conker's Bad Fur Day (USA) · .z64 / .n64 / .v64 · 64 MB</div>
+    </div>
+    <input id="romfile" type="file" accept=".z64,.n64,.v64,.rom,.bin" hidden>
+    <label class="gate-opts"><input type="checkbox" id="remember" checked> Remember the ROM in this browser so I don't have to load it again</label>
+    <div id="gateProg" hidden><div class="track"><div id="gateBar"></div></div><div id="gateStage"></div></div>
+    <div id="gateErr" role="alert" hidden></div>
+    <div class="gate-fine"><b>Your ROM stays on your computer.</b> It's read and decoded right here in the page; nothing is uploaded, and this site hosts no game data. You need your own copy of the game. Not affiliated with Rare, Nintendo or Microsoft.</div>
+  </div>
+</div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

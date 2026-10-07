@@ -1,0 +1,9 @@
+# Anything decoded from the ROM must never be committed or published.
+*.z64
+*.n64
+*.v64
+textured.json
+texmeta.json
+conker_viewer.html
+__pycache__/
+node_modules/
