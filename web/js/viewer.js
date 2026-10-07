@@ -174,6 +174,11 @@ function preparePosable(m){
     const vaf=new Float32Array(np);for(let i=0;i<np;i++)vaf[i]=g.va?g.va[i]/255:1.0;
     g.np=np;g.uvBuf=glBuf(uvf,gl.ARRAY_BUFFER);g.colBuf=glBuf(colf,gl.ARRAY_BUFFER);g.vaBuf=glBuf(vaf,gl.ARRAY_BUFFER);g.idxBuf=glBuf(g.idx,gl.ELEMENT_ARRAY_BUFFER);
     g.posBuf=gl.createBuffer();g.nrmBuf=gl.createBuffer();g.posArr=new Float32Array(np*3);g.nrmArr=new Float32Array(np*3);}
+  // A model that bakes its shading into vertex colours anywhere (Conker's grey glove gradients) is drawn unlit, so
+  // its white-vert groups are full-bright too: lighting them with the ROM normals faceted the gloves, greyed the
+  // teeth/eyes and exposed the cheek decals. Only all-white models (nothing baked) get the normals' light for form.
+  const anyBaked=groups.some(g=>g.baked);
+  for(const g of groups)g.hwlit=anyBaked?0:1;
   // real in-game animation clips (extracted from the assets02 keyframe pack this model maps to)
   const clips=[];
   const ap=(DATA.animpacks&&m.pack!=null)?DATA.animpacks[String(m.pack)]:null;
@@ -297,7 +302,8 @@ function drawPosable(m,opts){
     // term 1.0), NOT the synthetic directional light. ONLY white-vert groups (no baked shade) use the geometric
     // light for form. cbake chrome likewise draws env-map*vtxColour. Un-double-darkens Berri etc.; white-vert
     // models unchanged. (Matches the flat-face vC*(mod?1:sh) rule, now extended to textured faces.)
-    if(uLitNrm)gl.uniform1f(uLitNrm, (g.lnrm&&!g.baked)?1.0:0.0);   // real ROM normals + WHITE verts -> geometric light
+    if(uLitNrm)gl.uniform1f(uLitNrm, (g.lnrm&&!g.baked&&g.hwlit)?1.0:0.0);   // real ROM normals + all-white model -> geometric light
+    if(uWhiteForm)gl.uniform1f(uWhiteForm,0.0);                    // characters: white untextured parts stay full-bright
     let _gti=g.ti;                                                                 // eye texture selection (idle blink vs moving frown)
     if(PLAYER.on){
       if(PLAYER._faceMove && g.frown!=null) _gti=g.frown;                          // MOVING: narrowed FROWN sclera ONLY (ROM expr 0x2A sclera 0x798). NOT the bloodshot iris (0xe49) — per user, bloodshot is a separate hungover state, running just NARROWS. Iris stays neutral 0xe41.
@@ -387,7 +393,7 @@ function drawPosable(m,opts){
 // ---- GL ----
 const cvs=$('#gl');
 let gl=cvs.getContext("webgl",{antialias:true,alpha:false})||cvs.getContext("experimental-webgl");
-let prog,aPos,aNrm,aUV,aCol,aVA,uMVP,uLight,uMode,uTex,uFlatCol,uAlphaMode,uTint,uMod,uScroll,uNMat,uTexgen,uLitNrm,GTEX=[],WHITE=null;
+let prog,aPos,aNrm,aUV,aCol,aVA,uMVP,uLight,uMode,uTex,uFlatCol,uAlphaMode,uTint,uMod,uScroll,uNMat,uTexgen,uLitNrm,uWhiteForm,GTEX=[],WHITE=null;
 const STATE={cmode:0,shade:true,wire:false,spin:false,sky:true,triggers:false,cat:'posable',idx:0,target:[0,0,0],yaw:0.7,pitch:0.5,dist:4.4,poseAnim:'idle',animSpeed:1.0,attach:null,shirt:0,audioReg:null,audioLoop:false,audioVol:0.9,audioAuto:false,texFilter:'all',texSel:-1,texZoom:108,texPage:0,collide:true,walls:false};
 const keys={};let mesh=null;
 function initGL(){
@@ -396,7 +402,7 @@ function initGL(){
   // rotation) as a sphere-map -> their baked UVs are placeholders. uNMat transforms the model normal to eye space.
   const vs=`attribute vec3 aPos;attribute vec3 aNrm;attribute vec2 aUV;attribute vec3 aCol;attribute float aVA;uniform mat4 uMVP;uniform vec2 uScroll;uniform mat3 uNMat;uniform float uTexgen;varying vec3 vN;varying vec2 vUV;varying vec3 vC;varying float vA;void main(){vN=aNrm;if(uTexgen>0.5){vec3 ne=normalize(uNMat*aNrm);vUV=vec2(ne.x*0.5+0.5,-ne.y*0.5+0.5);}else{vUV=aUV-uScroll;}vC=aCol;vA=aVA;gl_Position=uMVP*vec4(aPos,1.0);}`;
   const fs=`precision mediump float;varying vec3 vN;varying vec2 vUV;varying vec3 vC;varying float vA;
-    uniform vec3 uLight;uniform float uMode;uniform sampler2D uTex;uniform vec3 uFlatCol;uniform float uAlphaMode;uniform vec3 uTint;uniform float uMod;uniform float uLitNrm;
+    uniform vec3 uLight;uniform float uMode;uniform sampler2D uTex;uniform vec3 uFlatCol;uniform float uAlphaMode;uniform vec3 uTint;uniform float uMod;uniform float uLitNrm;uniform float uWhiteForm;
     void main(){vec3 N=normalize(vN);float d=abs(dot(N,normalize(uLight)));float sh=0.55+0.45*d;
     if(uMode<0.5){
       vec4 t=texture2D(uTex,vUV); vec3 rgb=t.rgb*uTint; float shade=sh;
@@ -410,7 +416,7 @@ function initGL(){
       return;}
     // mod=1: vC IS baked shade (flat-shaded UV0 faces) -> no extra light, unless the group is hardware-lit (real ROM
     // normals) or its verts are pure white (nothing baked: runtime-coloured parts would otherwise be a flat silhouette)
-    if(uMode<1.5){float oa=(uAlphaMode>2.5)?vA:1.0; bool baked=uMod>0.5&&uLitNrm<0.5&&min(vC.r,min(vC.g,vC.b))<0.98; gl_FragColor=vec4(vC*(baked?1.0:sh),oa); return;}  // uAlphaMode>2.5 -> honour per-vertex alpha (untextured glass/overlay)
+    if(uMode<1.5){float oa=(uAlphaMode>2.5)?vA:1.0; bool baked=uMod>0.5&&uLitNrm<0.5&&(uWhiteForm<0.5||min(vC.r,min(vC.g,vC.b))<0.98); gl_FragColor=vec4(vC*(baked?1.0:sh),oa); return;}  // uAlphaMode>2.5 -> honour per-vertex alpha (untextured glass/overlay)
     if(uMode<2.5){gl_FragColor=vec4(uFlatCol*sh,1.0); return;}
     gl_FragColor=vec4(uFlatCol,1.0);}`;
   function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))$('#loading').textContent="Shader: "+gl.getShaderInfoLog(o);return o;}
@@ -418,7 +424,7 @@ function initGL(){
   aPos=gl.getAttribLocation(prog,"aPos");aNrm=gl.getAttribLocation(prog,"aNrm");aUV=gl.getAttribLocation(prog,"aUV");aCol=gl.getAttribLocation(prog,"aCol");aVA=gl.getAttribLocation(prog,"aVA");
   uMVP=gl.getUniformLocation(prog,"uMVP");uLight=gl.getUniformLocation(prog,"uLight");uMode=gl.getUniformLocation(prog,"uMode");uTex=gl.getUniformLocation(prog,"uTex");uFlatCol=gl.getUniformLocation(prog,"uFlatCol");
   uAlphaMode=gl.getUniformLocation(prog,"uAlphaMode");uTint=gl.getUniformLocation(prog,"uTint");uMod=gl.getUniformLocation(prog,"uMod");uScroll=gl.getUniformLocation(prog,"uScroll");
-  uNMat=gl.getUniformLocation(prog,"uNMat");uTexgen=gl.getUniformLocation(prog,"uTexgen");uLitNrm=gl.getUniformLocation(prog,"uLitNrm");
+  uNMat=gl.getUniformLocation(prog,"uNMat");uTexgen=gl.getUniformLocation(prog,"uTexgen");uLitNrm=gl.getUniformLocation(prog,"uLitNrm");uWhiteForm=gl.getUniformLocation(prog,"uWhiteForm");
   gl.enable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);
   WHITE=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,WHITE);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,1,1,0,gl.RGB,gl.UNSIGNED_BYTE,new Uint8Array([200,200,200]));
   return true;
@@ -768,7 +774,7 @@ function drawDust(MVP,Vv){
       uv[ui++]=UVT[k][0]; uv[ui++]=UVT[k][1]; col[ci++]=1;col[ci++]=1;col[ci++]=1; va[ai++]=al;}
   }
   gl.useProgram(prog); gl.uniformMatrix4fv(uMVP,false,new Float32Array(MVP));
-  gl.uniform1f(uMode,0.0); gl.uniform1f(uMod,1.0); if(uLitNrm)gl.uniform1f(uLitNrm,0.0);   // uMode0+uMod1+uLitNrm0 -> shade=1 (flat, no fake light)
+  gl.uniform1f(uMode,0.0); gl.uniform1f(uMod,1.0); if(uLitNrm)gl.uniform1f(uLitNrm,0.0); if(uWhiteForm)gl.uniform1f(uWhiteForm,0.0);   // uMode0+uMod1+uLitNrm0 -> shade=1 (flat, no fake light)
   gl.uniform1f(uAlphaMode,1.0); gl.uniform3f(uTint,0.80,0.71,0.55);                        // alpha = tex.a * vA ; tan DIRT tint
   if(uScroll)gl.uniform2f(uScroll,0,0); if(uTexgen)gl.uniform1f(uTexgen,0.0);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,dustTex()); gl.uniform1i(uTex,0);
@@ -1358,6 +1364,7 @@ function render(){
         }
         if(uTexgen)gl.uniform1f(uTexgen, g.tg?1.0:0.0);       // G_TEXTURE_GEN chrome surface -> UVs from eye normal
         if(uLitNrm)gl.uniform1f(uLitNrm, g.litnrm?1.0:0.0);   // has real ROM normals -> light it (white-vert objects)
+        if(uWhiteForm)gl.uniform1f(uWhiteForm,1.0);           // objects/levels: white untextured (runtime-coloured) parts get form
         if(mode===0){
           let ti=g.ti;
           // frame-cycle: per-segment PHASE (aph) drives the World-0x33 traveling wave (each RSP segment 2-7 shows a
