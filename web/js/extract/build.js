@@ -38,12 +38,30 @@ export function triOf(op, w0, w1) {
     [(w0 >>> 10) & 0x1F, (w0 >>> 5) & 0x1F, w0 & 0x1F], [(w0 >>> 23) & 0x1F, (w0 >>> 18) & 0x1F, ((w1 >>> 30) & 0x3) | ((w0 >>> 13) & 0x1C)]];
 }
 
+// Does a G_SETCOMBINE sample a texture? (TEXEL0/TEXEL1 in any RGB or alpha input of either cycle; RGB C also
+// takes TEXEL0/1_ALPHA.) Conker draws skin, muzzles, gloves etc. with shade-only combiners while the last
+// texture is still loaded — those triangles must render in vertex colour, not with that stale texture.
+export function combUsesTex(w0, w1) {
+  const t = (v) => v === 1 || v === 2;
+  const rgb = [(w0 >>> 20) & 0xF, (w1 >>> 28) & 0xF, (w0 >>> 15) & 0x1F, (w1 >>> 15) & 7,
+    (w0 >>> 5) & 0xF, (w1 >>> 24) & 0xF, w0 & 0x1F, (w1 >>> 6) & 7];
+  const alpha = [(w0 >>> 12) & 7, (w1 >>> 12) & 7, (w0 >>> 9) & 7, (w1 >>> 9) & 7,
+    (w1 >>> 21) & 7, (w1 >>> 3) & 7, (w1 >>> 18) & 7, w1 & 7];
+  return rgb.some(t) || rgb[2] === 8 || rgb[2] === 9 || rgb[6] === 8 || rgb[6] === 9 || alpha.some(t);
+}
+
 // SETOTHERMODE_L mask (length 1..32, shift such that length+shift <= 32)
 function omodeMask(length, sft) {
   return ((2 ** length - 1) * 2 ** sft) >>> 0;
 }
 
 function isPOT(n) { return n > 0 && (n & (n - 1)) === 0; }
+// bytes a W x H texture occupies in the pool (indices + palette for CI)
+function texBytes(W, H, fmt, siz, flag) {
+  if (flag & 0x400000) return W * H + 512;
+  if (flag & 0x800000) return W * H / 2 + 32;
+  return W * H * [0.5, 1, 2, 4][siz ?? 2];
+}
 function pot(n) { let p = 1; while (p < n) p <<= 1; return p; }
 function resizeNN(px, w, h, pw, ph) {
   const out = new Uint8Array(pw * ph * 4);
@@ -63,7 +81,8 @@ function hasAlpha(px) {
 
 const mtxDefault = [0, 0, 0];
 
-export function buildAll(rom, progress = () => {}) {
+export function buildAll(rom, progress = () => {}, { hints = null, debug = false } = {}) {
+  const posHints = (hints && hints.posable) || {};
   // ---------- global texture registry ----------
   const TEX = [];          // {px (POT RGBA), pw, ph, w, h, a}
   const TEXKEY = new Map(); // "texid,W,H" -> index (-1 failed)
@@ -112,30 +131,6 @@ export function buildAll(rom, progress = () => {}) {
     return idx;
   }
 
-  let eyeTi = null;
-  function eyeTexIndex() {
-    if (eyeTi !== null) return eyeTi;
-    const S = 64, px = new Uint8Array(S * S * 4), cx = S / 2, cy = S / 2;
-    const c = (x) => Math.max(0, Math.min(255, Math.trunc(x)));
-    const lerp = (a, b, t) => a + (b - a) * t;
-    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-      const dx = (x - cx) / (S * 0.5), dy = (y - cy) / (S * 0.5), r = Math.sqrt(dx * dx + dy * dy);
-      let R = 244, G = 242, B = 236;
-      if (r >= 0.86) { const t = Math.min(1.0, (r - 0.86) / 0.40); R = lerp(244, 52, t); G = lerp(242, 40, t); B = lerp(236, 32, t); }
-      if (r < 0.15) { R = 16; G = 14; B = 14; }
-      else if (r < 0.30) { const t = (r - 0.15) / 0.15; R = 64 + 46 * t; G = 40 + 34 * t; B = 22 + 20 * t; }
-      const hx = dx + 0.16, hy = dy + 0.20;
-      if (hx * hx + hy * hy < 0.012) { R = 252; G = 252; B = 252; }
-      const j = (y * S + x) * 4; px[j] = c(R); px[j + 1] = c(G); px[j + 2] = c(B); px[j + 3] = 255;
-    }
-    const idx = TEX.length;
-    TEX.push({ px, pw: S, ph: S, w: S, h: S, a: hasAlpha(px) });
-    TEXMETA.push([0, S, S, 0, 2, 0, 0, "synth_eye"]);
-    TEXKEYREV[idx] = null;
-    eyeTi = idx;
-    return idx;
-  }
-
   // ---------- skeleton (bind pose = translation accumulation) ----------
   function resolveBones(bones) {
     const bc = bones.length, slot2idx = new Map(), wt = new Array(bc).fill(null);
@@ -173,15 +168,29 @@ export function buildAll(rom, progress = () => {}) {
     let curomode = state.omode ?? 0, curcomb0 = state.comb0 ?? 0, curseg = state.seg ?? 0;
     let curcmS = state.cmS ?? 0, curcmT = state.cmT ?? 0, curuls = state.uls ?? 0, curult = state.ult ?? 0;
     let omodeSet = state.omset ?? false, lastpool = state.lastpool ?? null;
+    let curcomb1 = state.comb1 ?? 0, combSet = state.combset ?? false, curgeo = state.geo ?? 0;
+    let t0W = state.t0W ?? 0, t0H = state.t0H ?? 0;   // last render-tile (0) size, for tile setups that precede the SETTIMG
+    let maskS = state.maskS ?? 0, maskT = state.maskT ?? 0;
     const ekStr = Array.isArray(extkey) ? extkey.join(":") : String(extkey);
 
     function gettarget() {
       const rt = curseg >= 2 ? curseg : 0;
+      const sampled = !combSet || combUsesTex(curcomb0, curcomb1);
       let ti;
-      if (rt) ti = rtInherit && lastpool ? texIndex(...lastpool) : -1;
+      if (!sampled) ti = -1;
+      else if (rt) ti = rtInherit && lastpool ? texIndex(...lastpool) : -1;
       else {
-        ti = curtex ? texIndex(curtex, curW, curH, curfmt, cursiz, curflag) : -1;
-        if (ti >= 0) lastpool = [curtex, curW, curH, curfmt, cursiz, curflag];
+        // size = first SETTILESIZE after the SETTIMG; if none followed it, the render tile's size set before it
+        let W = expsize && t0W ? t0W : curW, H = expsize && t0H ? t0H : curH;
+        // a clamped tile is often a couple of texels short of the texture (62 of 64); decoding at the short width
+        // shears every row. Take the wrap-mask / next power-of-two size when the asset is exactly that big.
+        if (curtex && (!isPOT(W) || !isPOT(H))) {
+          const W2 = isPOT(W) ? W : maskS && 1 << maskS >= W ? 1 << maskS : pot(W), H2 = isPOT(H) ? H : maskT && 1 << maskT >= H ? 1 << maskT : pot(H);
+          if ((W2 !== W || H2 !== H) && texBytes(W2, H2, curfmt, cursiz, curflag) === rom.asset(curtex)?.length
+              && texBytes(W, H, curfmt, cursiz, curflag) !== rom.asset(curtex)?.length) { W = W2; H = H2; }
+        }
+        ti = curtex ? texIndex(curtex, W, H, curfmt, cursiz, curflag) : -1;
+        if (ti >= 0) lastpool = [curtex, W, H, curfmt, cursiz, curflag];
       }
       const zmode = (curomode >>> 10) & 3;
       const dec = zmode === 3 ? 1 : 0, blend = zmode === 2 ? 1 : 0;
@@ -191,10 +200,11 @@ export function buildAll(rom, progress = () => {}) {
       const ek = rt ? ekStr + "/" + rt : ekStr;
       const ac = !omodeSet || (curomode & 3) !== 0 || ((curomode >>> 12) & 1) ? 1 : 0;
       const wrapS = curcmS & 2 ? 2 : (curcmS & 1 ? 1 : 0), wrapT = curcmT & 2 ? 2 : (curcmT & 1 ? 1 : 0);
-      const key = [ti, dec, blend, sky, ek, mod, rt, ac, wrapS, wrapT, fbl].join("|");
+      const tg = curgeo & 0x40000 ? 1 : 0;   // G_TEXTURE_GEN: UVs generated from normals (chrome / env maps)
+      const key = [ti, dec, blend, sky, ek, mod, rt, ac, wrapS, wrapT, fbl, sampled ? "" : "u" + curtex, tg].join("|");
       let g = groups.get(key);
       if (!g) {
-        g = { V: [], map: new Map(), F: [], ti, dec, blend, prim: curprim, sky, mod, rt, ac, ws: wrapS, wt: wrapT, fbl, uls: curuls, ult: curult };
+        g = { V: [], map: new Map(), F: [], ti, dec, blend, prim: curprim, sky, mod, rt, ac, ws: wrapS, wt: wrapT, fbl, uls: curuls, ult: curult, tg };
         groups.set(key, g);
       }
       return g;
@@ -224,7 +234,9 @@ export function buildAll(rom, progress = () => {}) {
       } else if (op === 0xEF) {
         curomode = w1; omodeSet = true;
       } else if (op === 0xFC) {
-        curcomb0 = w0;
+        curcomb0 = w0; curcomb1 = w1; combSet = true;
+      } else if (op === 0xD9) {
+        curgeo = ((curgeo & (w0 & 0xFFFFFF)) | w1) >>> 0;
       } else if (op === 0xE2) {
         const shf = (w0 >>> 8) & 0xFF, length = (w0 & 0xFF) + 1, sft = 32 - length - shf;
         if (0 <= sft && sft <= 32) {
@@ -239,9 +251,12 @@ export function buildAll(rom, progress = () => {}) {
       } else if (op === 0xF5) {
         curfmt = (w0 >>> 21) & 7; cursiz = (w0 >>> 19) & 3;
         curcmS = (w1 >>> 8) & 3; curcmT = (w1 >>> 18) & 3;
+        maskS = (w1 >>> 4) & 0xF; maskT = (w1 >>> 14) & 0xF;
       } else if (op === 0xF2) {
+        const uls = (w0 >>> 12) & 0xFFF, ult = w0 & 0xFFF, lrs = (w1 >>> 12) & 0xFFF, lrt = w1 & 0xFFF;
+        if (((w1 >>> 24) & 7) === 0) { t0W = ((lrs - uls) >> 2) + 1; t0H = ((lrt - ult) >> 2) + 1; }
+        // the first SETTILESIZE after SETTIMG is the render tile; later ones are mip levels (TMEM offsets, not UVs)
         if (expsize) {
-          const uls = (w0 >>> 12) & 0xFFF, ult = w0 & 0xFFF, lrs = (w1 >>> 12) & 0xFFF, lrt = w1 & 0xFFF;
           curW = ((lrs - uls) >> 2) + 1; curH = ((lrt - ult) >> 2) + 1;
           curuls = uls; curult = ult; expsize = false;
         }
@@ -262,13 +277,20 @@ export function buildAll(rom, progress = () => {}) {
       i += 8;
     }
     Object.assign(state, { tex: curtex, W: curW, H: curH, fmt: curfmt, siz: cursiz, flag: curflag, exp: expsize, prim: curprim,
-      omode: curomode, comb0: curcomb0, seg: curseg, cmS: curcmS, cmT: curcmT, omset: omodeSet, lastpool, uls: curuls, ult: curult });
+      omode: curomode, comb0: curcomb0, seg: curseg, cmS: curcmS, cmT: curcmT, omset: omodeSet, lastpool, uls: curuls, ult: curult,
+      comb1: curcomb1, combset: combSet, geo: curgeo, t0W, t0H, maskS, maskT });
   }
 
   // ---------- runtime-bound animated textures ----------
   const chunkOf = (name) => { if (!name.startsWith("sub")) return -1; const v = Number(name.slice(3)); return Number.isInteger(v) ? v : -1; };
   let rtWaterFrames = null, panelFramesL = null, lv1aPanelsL = null;
-  const rtWater = () => (rtWaterFrames ??= RT_WATER.map((t) => texIndex(t, 64, 64, 2, 0, 0x800000)).filter((i) => i >= 0));
+  const rtWater = () => {
+    if (!rtWaterFrames) {
+      const f = RT_WATER.map((t) => texIndex(t, 64, 64, 2, 0, 0x800000)).filter((i) => i >= 0);
+      rtWaterFrames = f.length > 2 ? [...f, ...f.slice(1, -1).reverse()] : f;   // ping-pong
+    }
+    return rtWaterFrames;
+  };
   const panelFrames = () => (panelFramesL ??= PANEL_FRAMES_IDS.map((t) => texIndex(t, 32, 32, 0, 2, 0)).filter((i) => i >= 0));
   const lv1aPanels = () => (lv1aPanelsL ??= LV1A_PANEL_IDS.map((t) => texIndex(t, 64, 32, 0, 2, 0)).filter((i) => i >= 0));
 
@@ -382,6 +404,7 @@ export function buildAll(rom, progress = () => {}) {
       if (VA.length && minOf(VA) < 250) { grp.va = VA; grp.vat = 1; }
       if (ti >= 0 && TEX[ti].a) grp.al = 1;
       if (g.ac) grp.ac = 1;
+      if (allowCull && grp.al && !grp.ac) grp.bl = 1;   // objects: soft alpha with no alpha test only looks right blended
       let ws = g.ws || 0, wt = g.wt || 0;
       if (UV.length) {
         if (ws === 2 && !g.dec && uvSpan(UV, 0) > 1.5) ws = 0;
@@ -389,7 +412,7 @@ export function buildAll(rom, progress = () => {}) {
       }
       if (ws) grp.ws = ws;
       if (wt) grp.wt = wt;
-      if (rtFrames) { grp.anim = rtFrames; grp.rt = 1; grp.aspd = 4; }
+      if (rtFrames) { grp.anim = rtFrames; grp.rt = 1; grp.aspd = 4; grp.mod = 1; }
       else {
         if (g.dec) grp.dec = 1;
         if (g.blend) grp.bl = 1;
@@ -399,6 +422,7 @@ export function buildAll(rom, progress = () => {}) {
           if (uvmax < 4.0) grp.sky = 1;
         }
         if (g.mod) grp.mod = 1;
+        if (g.tg) grp.tg = 1;
         const pr = g.prim || [255, 255, 255];
         if (!(pr[0] === 255 && pr[1] === 255 && pr[2] === 255)) grp.tint = [...pr];
         if (animmap && animmap.has(ti)) grp.anim = animmap.get(ti);
@@ -443,6 +467,7 @@ export function buildAll(rom, progress = () => {}) {
       if (g.dec) grp.dec = 1;
       if (g.blend) grp.bl = 1;
       if (g.mod) grp.mod = 1;
+      if (g.tg) grp.tg = 1;
       if (animmap && animmap.has(ti)) grp.anim = animmap.get(ti);
       out.push(grp); tot += F.length;
     }
@@ -570,21 +595,38 @@ export function buildAll(rom, progress = () => {}) {
     const r = a01DlRange(data, so, sl);
     if (!r) return null;
     const [vend, dlStart, dlEnd] = r;
+    // the model's own texture table (header 0x18/0x1C): 12-byte {texid, texid, W<<16|H} entries — the real
+    // texture sizes, which the display list's tile setup only approximates (mips, 64x16 load tiles, ...)
+    const tdims = new Map();
+    { const t = u32(data, 0x18), n = u32(data, 0x1c);
+      if (t && n && n % 12 === 0 && t + n <= data.length) for (let i = t; i < t + n; i += 12) { const wh = u32(data, i + 8); if (wh) tdims.set(u32(data, i), [wh >>> 16, wh & 0xFFFF]); } }
     const groups = new Map(), slot = new Map(), vslot = new Map();
     let curslot = 0, curtex = null, curW = 0, curH = 0, curfmt = null, cursiz = null, curflag = 0, expsize = false;
-    let curomode = 0, omodeSet = false, curcomb0 = 0, curseg = 0, curcmS = 0, curcmT = 0, curgeo = 0;
+    let curomode = 0, omodeSet = false, curcomb0 = 0, curcomb1 = 0, combSet = false, curseg = 0, curcmS = 0, curcmT = 0, curgeo = 0;
+    const mh = posHints[id] || {};
     function gettarget() {
       const rt = curseg >= 2 ? curseg : 0;
-      const ti = rt ? -1 : (curtex ? texIndex(curtex, curW, curH, curfmt, cursiz, curflag) : -1);
+      const sampled = !combSet || combUsesTex(curcomb0, curcomb1);
+      // runtime-bound segments (eyes, irises, faces) can't be read from the DL; hints name the texture
+      const hk = rt + ":" + curW + "x" + curH;
+      // hint per segment+tile: {tex} = show that texture, {tex:null} = untextured, {drop} = not drawn
+      const h0 = !rt ? undefined : !sampled ? mh[hk + ":u"] : (mh[hk] !== undefined ? mh[hk] : mh[rt + ":*"]);
+      const h = h0 && (h0.drop || (sampled && h0.tex)) ? h0 : null;
+      const td = curtex ? tdims.get(curtex) : null;
+      const ti = !sampled ? -1 : rt ? (h && h.tex ? texIndex(...h.tex) : -1) : (curtex ? texIndex(curtex, td ? td[0] : curW, td ? td[1] : curH, curfmt, cursiz, curflag) : -1);
       const zmode = (curomode >>> 10) & 3, dec = zmode === 3 ? 1 : 0, blend = zmode === 2 ? 1 : 0;
       const c = curcomb0;
       let mod = [(c >>> 20) & 0xF, (c >>> 15) & 0x1F, (c >>> 5) & 0xF, c & 0x1F].includes(4) ? 1 : 0;
       if (curgeo & 0x40000) mod = 0;
       const ac = !omodeSet || (curomode & 3) !== 0 || ((curomode >>> 12) & 1) ? 1 : 0;
       const wrapS = curcmS & 2 ? 2 : (curcmS & 1 ? 1 : 0), wrapT = curcmT & 2 ? 2 : (curcmT & 1 ? 1 : 0);
-      const key = [ti, dec, blend, mod, rt, ac, wrapS, wrapT].join("|");
+      const key = [ti, dec, blend, mod, rt, ac, wrapS, wrapT, sampled ? "" : "u" + curtex, curgeo & 0x40000 ? "tg" : "",
+        h && h.drop ? "drop" : "", debug && rt ? hk : ""].join("|");
       let g = groups.get(key);
-      if (!g) { g = { V: [], map: new Map(), kk: new Map(), F: [], ti, dec, bl: blend, mod, rt, ac, ws: wrapS, wt: wrapT }; groups.set(key, g); }
+      if (!g) {
+        g = { V: [], map: new Map(), kk: new Map(), F: [], ti, dec, bl: blend, mod, rt, ac, ws: wrapS, wt: wrapT, sampled, hint: h, hk: sampled ? hk : hk + ":u", tg: curgeo & 0x40000 ? 1 : 0 };
+        groups.set(key, g);
+      }
       return g;
     }
     let i = dlStart;
@@ -602,7 +644,7 @@ export function buildAll(rom, progress = () => {}) {
           } else slot.delete(start + k);
         }
       } else if (op === 0xEF) { curomode = w1; omodeSet = true; }
-      else if (op === 0xFC) curcomb0 = w0;
+      else if (op === 0xFC) { curcomb0 = w0; curcomb1 = w1; combSet = true; }
       else if (op === 0xD9) curgeo = ((curgeo & (w0 & 0xFFFFFF)) | w1) >>> 0;
       else if (op === 0xE2) {
         const shf = (w0 >>> 8) & 0xFF, length = (w0 & 0xFF) + 1, sft = 32 - length - shf;
@@ -614,7 +656,8 @@ export function buildAll(rom, progress = () => {}) {
       } else if (op === 0xF5) {
         curfmt = (w0 >>> 21) & 7; cursiz = (w0 >>> 19) & 3; curcmS = (w1 >>> 8) & 3; curcmT = (w1 >>> 18) & 3;
       } else if (op === 0xF2) {
-        if (expsize) {
+        // render-tile (0) size, whether it's set before or after the SETTIMG (both orders occur); tiles 1+ are mips
+        if (((w1 >>> 24) & 7) === 0) {
           const uls = (w0 >>> 12) & 0xFFF, ult = w0 & 0xFFF, lrs = (w1 >>> 12) & 0xFFF, lrt = w1 & 0xFFF;
           curW = ((lrs - uls) >> 2) + 1; curH = ((lrt - ult) >> 2) + 1; expsize = false;
         }
@@ -637,70 +680,22 @@ export function buildAll(rom, progress = () => {}) {
     return packPosable(id, bones, groups);
   }
 
-  function eyeCands(groups) {
-    const cands = [];
-    for (const g of groups.values()) {
-      if (!g.rt || g.ti >= 0) continue;
-      const F = g.F;
-      if (!F.length || F.length > 44) continue;
-      const used = sortedNums(F.flat());
-      if (used.length < 3) continue;
-      const V = g.V, n = used.length;
-      let sr = 0, sg = 0, sb = 0, sx = 0, sy = 0, sz = 0, xmin = Infinity, xmax = -Infinity;
-      for (const i of used) {
-        sr += V[i][6]; sg += V[i][7]; sb += V[i][8]; sx += V[i][1]; sy += V[i][2]; sz += V[i][3];
-        if (V[i][1] < xmin) xmin = V[i][1]; if (V[i][1] > xmax) xmax = V[i][1];
-      }
-      if (!(sr / n >= 185 && sg / n >= 185 && sb / n >= 180)) continue;
-      cands.push({ g, x: sx / n, y: sy / n, z: sz / n, xext: xmax - xmin, ntri: F.length });
-    }
-    return cands;
-  }
-  function detectEyeGroups(groups) {
-    const cands = eyeCands(groups), eyes = new Set();
-    for (let i = 0; i < cands.length; i++) for (let j = i + 1; j < cands.length; j++) {
-      const a = cands[i], b = cands[j];
-      if (a.x * b.x < 0 && Math.min(Math.abs(a.x), Math.abs(b.x)) >= 2 &&
-          Math.abs(Math.abs(a.x) - Math.abs(b.x)) <= 0.55 * Math.max(Math.abs(a.x), Math.abs(b.x)) + 3 &&
-          Math.abs(a.y - b.y) <= 12 && Math.abs(a.z - b.z) <= 16) { eyes.add(a.g); eyes.add(b.g); }
-    }
-    if (!eyes.size) {
-      let zmax = -1e9;
-      for (const c of cands) if (c.z > zmax) zmax = c.z;
-      for (const c of cands) if (c.xext >= 40 && c.z >= 8 && c.z >= zmax - 4 && Math.abs(c.x) <= 14 && c.ntri <= 16) eyes.add(c.g);
-    }
-    return eyes;
-  }
   function packPosable(id, bones, groups) {
     const outGroups = [];
     let ntri = 0;
-    const eyeset = detectEyeGroups(groups);
     for (const g of groups.values()) {
-      const V = g.V, F = g.F;
-      let ti = g.ti;
-      if (!F.length) continue;
-      const eye = eyeset.has(g);
-      if (eye) { ti = g.ti = eyeTexIndex(); g.mod = 1; g.bl = 0; }
+      const V = g.V, F = g.F, ti = g.ti;
+      if (!F.length || (g.hint && g.hint.drop)) continue;
       const used = sortedNums(F.flat()), rm = new Map(used.map((o, k) => [o, k]));
       const SLOT = new Uint8Array(used.length), POS = new Int16Array(used.length * 3), UV = new Int16Array(used.length * 2), COL = new Uint8Array(used.length * 3), VA = new Uint8Array(used.length);
       const tw = ti >= 0 ? TEX[ti].w : 1, th = ti >= 0 ? TEX[ti].h : 1;
-      let smin = 0, tmin = 0, sr = 1, tr = 1;
-      if (eye) {
-        const ss = used.map((i) => V[i][4]), ts = used.map((i) => V[i][5]);
-        smin = Math.min(...ss); tmin = Math.min(...ts);
-        sr = (Math.max(...ss) - smin) || 1; tr = (Math.max(...ts) - tmin) || 1;
-      }
       used.forEach((oi, k) => {
         const v = V[oi];
         SLOT[k] = v[0] & 0xFF;
         POS[k * 3] = clampI16(v[1]); POS[k * 3 + 1] = clampI16(v[2]); POS[k * 3 + 2] = clampI16(v[3]);
-        if (eye) {
-          UV[k * 2] = pyRound((v[4] - smin) / sr * 512); UV[k * 2 + 1] = pyRound((v[5] - tmin) / tr * 512);
-          COL[k * 3] = COL[k * 3 + 1] = COL[k * 3 + 2] = 255;
-        } else {
-          UV[k * 2] = clampUV(pyRound(v[4] / 32.0 / tw * 512)); UV[k * 2 + 1] = clampUV(pyRound(v[5] / 32.0 / th * 512));
-          COL[k * 3] = v[6]; COL[k * 3 + 1] = v[7]; COL[k * 3 + 2] = v[8];
-        }
+        UV[k * 2] = clampUV(pyRound(v[4] / 32.0 / tw * 512)); UV[k * 2 + 1] = clampUV(pyRound(v[5] / 32.0 / th * 512));
+        if (g.hint && g.hint.tex) COL[k * 3] = COL[k * 3 + 1] = COL[k * 3 + 2] = 255;   // runtime face textures are drawn unshaded
+        else { COL[k * 3] = v[6]; COL[k * 3 + 1] = v[7]; COL[k * 3 + 2] = v[8]; }
         VA[k] = v.length > 9 ? v[9] : 255;
       });
       const IDX = new Uint16Array(F.length * 3);
@@ -709,7 +704,15 @@ export function buildAll(rom, progress = () => {}) {
       ntri += IDX.length / 3;
       const al = ti >= 0 && TEX[ti].a ? 1 : 0;
       const gg = { ti, al, ac: g.ac, bl: g.bl, dec: g.dec, mod: g.mod, ws: g.ws, wt: g.wt, n: IDX.length, slot: SLOT, pos: POS, uv: UV, col: COL, idx: IDX };
+      if (g.hint && g.hint.fl) Object.assign(gg, g.hint.fl[[gg.dec, gg.ac, gg.bl, gg.ws, gg.wt].map((v) => v || 0).join()] || {});
       if (VA.length && minOf(VA) < 250) { gg.va = VA; gg.vat = 1; }
+      if (gg.bl && !gg.al && !gg.vat) gg.bl = 0;   // XLU render mode with nothing to blend -> draw opaque
+      if (g.tg) gg.tg = 1;                          // G_TEXTURE_GEN: UVs come from the normals (chrome / env maps)
+      const h = g.hint;   // eye blink frames / frown swaps for runtime-bound faces
+      if (h && h.blink) gg.blink = h.blink.map((t) => texIndex(...t));
+      if (h && h.frown) gg.frown = texIndex(...h.frown);
+      if (h && h.frownIris) gg.frownIris = texIndex(...h.frownIris);
+      if (debug) { gg._seg = g.rt; gg._hk = g.hk; gg._sampled = g.sampled; gg._rawcol = Uint8Array.from(used.flatMap((oi) => V[oi].slice(6, 9))); }
       outGroups.push(gg);
     }
     if (ntri < 12 || !outGroups.length) return null;
@@ -866,7 +869,7 @@ export function buildAll(rom, progress = () => {}) {
       if (wf.length) for (const r of b19) {
         const k = reckey(r);
         if (k === null || !partidx.has(k)) continue;
-        for (const g of partpool[partidx.get(k)].g) if ((g.ti ?? -1) < 0) { g.ti = wf[0]; g.anim = wf; g.aspd = 4; g.rt = 1; }
+        for (const g of partpool[partidx.get(k)].g) if ((g.ti ?? -1) < 0) { g.ti = wf[0]; g.anim = wf; g.aspd = 4; g.rt = 1; g.mod = 1; }
       }
     }
     const bypos = new Map();
@@ -959,17 +962,11 @@ export function buildAll(rom, progress = () => {}) {
   const animmap = loadAnimmap();
   const posable = [], objects = [], levels = [];
   progress("Characters", 0);
+  // every assets01 model with a skeleton and real geometry is posable (single-bone ones are rigid props)
   for (let id = 0; id < 187; id++) {
-    let g = null;
-    try { [g] = buildA01Object(id); } catch (e) { g = null; }
-    if (g && g.size) {
-      const item = packItem(`a01·${String(id).padStart(3, "0")}`, `assets01 · model ${id}`, "character", g, null, true);
-      if (item && item.ntri >= 12 && item._coh >= 0.45) {
-        let pm = null;
-        try { pm = buildA01Posable(id); } catch (e) { pm = null; }
-        if (pm && pm.bones.length >= 2) { pm.name = `model ${String(id).padStart(3, "0")}`; posable.push(pm); }
-      }
-    }
+    let pm = null;
+    try { pm = buildA01Posable(id); } catch (e) { pm = null; }
+    if (pm && pm.bones.length >= 1) { pm.name = `model ${String(id).padStart(3, "0")}`; posable.push(pm); }
     if (id % 8 === 0) progress("Characters", id / 187);
   }
   const objfiles = [...rom.subfiles(0x03).map(([n, b]) => ["03", n, b]), ...rom.subfiles(0x09).map(([n, b]) => ["09", n, b])];

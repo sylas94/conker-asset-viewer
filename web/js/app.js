@@ -57,7 +57,8 @@ async function start(fileBytes, { remember, fromCache }) {
     return showError(e instanceof RomError ? e.message : "Couldn't read that file.");
   }
   if (remember && !fromCache) await saveRom(rom);
-  const animtab = fetch("data/animtable.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const getJSON = (u) => fetch(u).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const animtab = getJSON("data/animtable.json"), hints = getJSON("data/hints.json");
   const worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
   const t0 = performance.now();
   worker.onmessage = async (e) => {
@@ -75,7 +76,7 @@ async function start(fileBytes, { remember, fromCache }) {
   };
   worker.onerror = (e) => { worker.terminate(); console.error(e); showError("Your browser couldn't run the extractor. Use a current version of Chrome, Edge, Firefox or Safari."); };
   const copy = rom.slice().buffer;
-  worker.postMessage({ rom: copy }, [copy]);
+  worker.postMessage({ rom: copy, hints: await hints }, [copy]);
 }
 
 function bootViewer() {

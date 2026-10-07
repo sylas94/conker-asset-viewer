@@ -18,10 +18,10 @@ export async function checkRom(fileBytes) {
   return rom;
 }
 
-/** romBytes must already be checked. progress(stage, fraction 0..1) */
-export function extract(romBytes, progress = () => {}) {
+/** romBytes must already be checked. progress(stage, fraction 0..1); opts = {hints, debug} */
+export function extract(romBytes, progress = () => {}, opts = {}) {
   const rom = new Rom(romBytes);
-  const data = buildAll(rom, progress);
+  const data = buildAll(rom, progress, opts);
   progress("Animations", 0);
   attachAnims(rom, data);
   progress("Done", 1);

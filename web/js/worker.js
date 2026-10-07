@@ -1,9 +1,9 @@
-// Runs the extractor off the main thread. In: {rom: ArrayBuffer (already checked)}. Out: progress + data.
+// Runs the extractor off the main thread. In: {rom: ArrayBuffer (already checked), hints}. Out: progress + data.
 import { extract } from "./extract/index.js";
 
 self.onmessage = (e) => {
   try {
-    const data = extract(new Uint8Array(e.data.rom), (stage, frac) => self.postMessage({ type: "progress", stage, frac }));
+    const data = extract(new Uint8Array(e.data.rom), (stage, frac) => self.postMessage({ type: "progress", stage, frac }), { hints: e.data.hints });
     delete data.texmetaFull;
     delete data.txfail;
     // hand every typed array's buffer over instead of copying ~100 MB
