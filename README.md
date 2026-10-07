@@ -62,7 +62,9 @@ The Python scripts (`build_textured.py` and friends, with ROM access in `rom.py`
 
 ## Coverage
 
-Everything the July 31 build showed is extracted: 181 characters (with eyes, blinking, shirt variants), 501 objects, 56 levels, 118 attachments, 26 animated held props, 1,573 character animation clips plus prop clips (with translation tracks), scrolling and animated materials, and all 2,256 audio samples. Most items match the July 31 build exactly; the rest differ in small ways (a few texture sizes the game's own load commands contradict, some blend flags). Vertex normals aren't exported (the July 31 build computed them; the viewer computes its own smooth normals).
+Everything the July 31 build showed is extracted: 181 characters (with eyes, blinking, shirt variants), 504 objects, 56 levels, 118 attachments, 26 animated held props, 1,573 character animation clips plus prop clips (with translation tracks), scrolling and animated materials, and all 2,256 audio samples. Hardware-lit models carry the ROM's own vertex normals (G_MOVEMEM 0x0E: an s8 nx,ny pair per vertex-buffer slot, nz in the vertex's flag byte); unlit ones get smooth normals computed from the mesh.
+
+Since then the extractor has diverged from the July 31 build where both were wrong: newer object headers put vertices at 0x18 (not 0x28), 31 characters' second display-list table is a separate untextured pass rather than more mesh, white untextured parts of objects are real runtime-coloured surfaces (only levels have invisible trigger volumes), and texture wrap and UV origin come from the render tile (0) rather than whichever tile was set last.
 
 `web/data/animtable.json` holds the move names and animation-ID map used by the playable-Conker mode, and `web/data/hints.json` holds the curated numbers described above (texture IDs, flags, sample offsets). Neither contains art or audio.
 
