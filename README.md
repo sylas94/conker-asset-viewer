@@ -33,21 +33,24 @@ The page has to be served over http(s). Module workers and `crypto.subtle` don't
 
 ## Verifying the extractor
 
-The Python scripts (`build_textured.py`, `attach_anims.py` and friends, with ROM access in `rom.py`) are the reference implementation. The JavaScript port must produce identical output:
+`web/js/extract/` is the source of truth. It's checked against the July 31 desktop build (`conker_viewer.html`), the best-looking output the old pipeline ever produced. The code that made that build no longer exists, but its data does:
 
 ```
-set CONKER_ROM=path\to\conker.z64
-python build_textured.py && python attach_anims.py          # writes textured.json (keep it out of git)
-node tools/compare_js.mjs %CONKER_ROM% textured.json         # "IDENTICAL to the Python reference"
+# jul31.json = the "geometry" JSON embedded in the July-31 conker_viewer.html (keep it out of git)
+node tools/diff_jul31.mjs <rom> jul31.json [posable|objects|levels|attachments]
 ```
 
-Run that comparison after any change to either side. `SANITY=1` plants deliberate differences to prove the comparison catches them.
+The diff prints, item by item, which groups differ (texture, size, triangle count, flags). Some differences are deliberate: where the July 31 build decoded a texture at a size the game's own load commands contradict, the extractor follows the game.
+
+A few things can't be read off the display lists, such as which texture a character's runtime-bound eye or face segment shows, or its blink and frown frames. `tools/gen_hints.mjs <rom> jul31.json` derives them from the July 31 build into `web/data/hints.json`. That file holds texture IDs and flags only; every pixel and vertex still comes from the visitor's ROM.
+
+The Python scripts (`build_textured.py` and friends, with ROM access in `rom.py`) are the original July 24 pipeline, kept for reference. `node tools/compare_js.mjs <rom> textured.json` compared the first JS port against them, but the extractor has moved on since then.
 
 ## Not in the extractor yet
 
-The July 31 desktop build (`conker_viewer.html`) also had audio (VADPCM samples), vertex normals, texture-gen and scrolling materials, eye blinks, prop animations, and more objects and characters. The code that produced that data no longer exists. Those features need to be rebuilt in the extractor, using that build as the reference output. The viewer already supports them and lights them up once the data is present.
+The July 31 build also had audio (VADPCM samples), scrolling materials, Conker's shirt variants, prop animations and a handful of extra props. The viewer already supports them and turns them on as soon as the data is present.
 
-`web/data/animtable.json` (move names and the animation-ID map used by the playable-Conker mode) is a small hand-labelled table copied from that build. It contains no art or audio.
+`web/data/animtable.json` holds the move names and animation-ID map used by the playable-Conker mode. It's a small hand-labelled table copied from that build and contains no art or audio.
 
 ## Never commit
 

@@ -158,7 +158,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
   }
 
   // ---------- core DL walk -> per-texindex geometry ----------
-  function walkDlGroups(data, dl, vtxBase, vend, groups, { skel = null, sky = 0, extkey = 0, state = null, runEnd = null, rtInherit = false } = {}) {
+  function walkDlGroups(data, dl, vtxBase, vend, groups, { skel = null, sky = 0, extkey = 0, state = null, runEnd = null, rtInherit = false, tdims = null } = {}) {
     const slot = new Map();
     let i = dl, mtx = mtxDefault;
     if (state === null) state = {};
@@ -182,6 +182,8 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
       else {
         // size = first SETTILESIZE after the SETTIMG; if none followed it, the render tile's size set before it
         let W = expsize && t0W ? t0W : curW, H = expsize && t0H ? t0H : curH;
+        const td = tdims && curtex ? tdims.get(curtex) : null;
+        if (td) [W, H] = td;
         // a clamped tile is often a couple of texels short of the texture (62 of 64); decoding at the short width
         // shears every row. Take the wrap-mask / next power-of-two size when the asset is exactly that big.
         if (curtex && (!isPOT(W) || !isPOT(H))) {
@@ -563,12 +565,23 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
   }
   function a01DlRange(data, so, sl) {
     const vend = u32(data, 0x08) || 0x1000;
-    const hint = so && so + sl <= data.length ? so + sl : Math.min(vend, data.length);
+    // the display list follows the texture table (header 0x18/0x1C), on the next 8-byte boundary; scanning from
+    // a 4-mod-8 offset never lines up with a real command (models 8, 58, 135, 145)
+    const tt = u32(data, 0x18), tn = u32(data, 0x1c);
+    let hint = so && so + sl <= data.length ? so + sl : Math.min(vend, data.length);
+    if (tt && tn % 12 === 0 && tt + tn <= data.length && tt >= hint) hint = (tt + tn + 7) & ~7;
     let dlStart = a01FirstRun(data, hint);
     if (dlStart === null) dlStart = a01FindDl(data, Math.min(vend, data.length));
     if (dlStart === null) return null;
     const secC = u32(data, 0x20);
     return [vend, dlStart, dlStart < secC && secC <= data.length ? secC : data.length];
+  }
+  // an assets01 model's own texture table (header 0x18/0x1C): 12-byte {texid, texid, W<<16|H} entries — the real
+  // texture sizes, which the display list's tile setup only approximates (mips, 64x16 load tiles, ...)
+  function a01TexDims(data) {
+    const tdims = new Map(), t = u32(data, 0x18), n = u32(data, 0x1c);
+    if (t && n && n % 12 === 0 && t + n <= data.length) for (let i = t; i < t + n; i += 12) { const wh = u32(data, i + 8); if (wh) tdims.set(u32(data, i), [wh >>> 16, wh & 0xFFFF]); }
+    return tdims;
   }
   function buildA01Object(id) {
     const data = getA01(id);
@@ -577,33 +590,17 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
     const r = a01DlRange(data, u32(data, 0x10), u32(data, 0x14));
     if (!r) return [null, false];
     const [, dlStart, dlEnd] = r, groups = new Map();
-    walkDlGroups(data, dlStart, 0, data.length, groups, { skel, runEnd: dlEnd, rtInherit: true });
+    walkDlGroups(data, dlStart, 0, data.length, groups, { skel, runEnd: dlEnd, rtInherit: true, tdims: a01TexDims(data) });
     rtFallback(groups);
     return [groups, skel !== null];
   }
 
-  function buildA01Posable(id) {
-    const data = getA01(id);
-    if (!truthy(data) || data.length < 0x40) return null;
-    const so = u32(data, 0x10), sl = u32(data, 0x14), bc = Math.floor(sl / 16);
-    if (so === 0 || bc === 0 || bc > 200 || so + bc * 16 > data.length) return null;
-    const bones = [];
-    for (let i = 0; i < bc; i++) {
-      const o = so + i * 16;
-      bones.push([u8(data, o), u8(data, o + 1), u8(data, o + 2), pyRoundN(f32(data, o + 4), 3), pyRoundN(f32(data, o + 8), 3), pyRoundN(f32(data, o + 12), 3)]);
-    }
-    const r = a01DlRange(data, so, sl);
-    if (!r) return null;
-    const [vend, dlStart, dlEnd] = r;
-    // the model's own texture table (header 0x18/0x1C): 12-byte {texid, texid, W<<16|H} entries — the real
-    // texture sizes, which the display list's tile setup only approximates (mips, 64x16 load tiles, ...)
-    const tdims = new Map();
-    { const t = u32(data, 0x18), n = u32(data, 0x1c);
-      if (t && n && n % 12 === 0 && t + n <= data.length) for (let i = t; i < t + n; i += 12) { const wh = u32(data, i + 8); if (wh) tdims.set(u32(data, i), [wh >>> 16, wh & 0xFFFF]); } }
+  // walk a posable model's display list(s): bone-LOCAL vertices tagged with the G_MTX slot that drives them.
+  // ranges = [[start, end, stopAtENDDL]], vaddr(seg, off) -> file offset of a vertex block, mh = runtime hints
+  function walkPosable(data, ranges, vend, vaddr, tdims, mh) {
     const groups = new Map(), slot = new Map(), vslot = new Map();
     let curslot = 0, curtex = null, curW = 0, curH = 0, curfmt = null, cursiz = null, curflag = 0, expsize = false;
     let curomode = 0, omodeSet = false, curcomb0 = 0, curcomb1 = 0, combSet = false, curseg = 0, curcmS = 0, curcmT = 0, curgeo = 0;
-    const mh = posHints[id] || {};
     function gettarget() {
       const rt = curseg >= 2 ? curseg : 0;
       const sampled = !combSet || combUsesTex(curcomb0, curcomb1);
@@ -629,13 +626,14 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
       }
       return g;
     }
+    for (const [dlStart, dlEnd, stopAtEnd] of ranges) {
     let i = dlStart;
     while (i + 8 <= dlEnd) {
       const w0 = u32(data, i), w1 = u32(data, i + 4), op = w0 >>> 24;
-      if (op === 0xDF) { i += 8; continue; }
+      if (op === 0xDF) { if (stopAtEnd) break; i += 8; continue; }
       if (op === 0xDA) curslot = Math.floor((w1 & 0xFFFFFF) / 0x40);
       else if (op === 0x01) {
-        const n = (w0 >>> 12) & 0xFF, end = (w0 >>> 1) & 0x7F, start = end - n, off = w1 & 0xFFFFFF;
+        const n = (w0 >>> 12) & 0xFF, end = (w0 >>> 1) & 0x7F, start = end - n, off = vaddr((w1 >>> 24) & 0xF, w1 & 0xFFFFFF);
         for (let k = 0; k < n; k++) {
           const vo = off + k * 16;
           if (0x28 <= vo && vo + 16 <= vend) {
@@ -677,10 +675,27 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
       }
       i += 8;
     }
+    }
+    return groups;
+  }
+  function buildA01Posable(id) {
+    const data = getA01(id);
+    if (!truthy(data) || data.length < 0x40) return null;
+    const so = u32(data, 0x10), sl = u32(data, 0x14), bc = Math.floor(sl / 16);
+    if (so === 0 || bc === 0 || bc > 200 || so + bc * 16 > data.length) return null;
+    const bones = [];
+    for (let i = 0; i < bc; i++) {
+      const o = so + i * 16;
+      bones.push([u8(data, o), u8(data, o + 1), u8(data, o + 2), pyRoundN(f32(data, o + 4), 3), pyRoundN(f32(data, o + 8), 3), pyRoundN(f32(data, o + 12), 3)]);
+    }
+    const r = a01DlRange(data, so, sl);
+    if (!r) return null;
+    const [vend, dlStart, dlEnd] = r;
+    const groups = walkPosable(data, [[dlStart, dlEnd, false]], vend, (seg, off) => off, a01TexDims(data), posHints[id] || {});
     return packPosable(id, bones, groups);
   }
 
-  function packPosable(id, bones, groups) {
+  function packPosable(id, bones, groups, minTri = 12) {
     const outGroups = [];
     let ntri = 0;
     for (const g of groups.values()) {
@@ -713,10 +728,18 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
       if (h && h.frown) gg.frown = texIndex(...h.frown);
       if (h && h.frownIris) gg.frownIris = texIndex(...h.frownIris);
       if (debug) { gg._seg = g.rt; gg._hk = g.hk; gg._sampled = g.sampled; gg._rawcol = Uint8Array.from(used.flatMap((oi) => V[oi].slice(6, 9))); }
+      if (h && h.variants) {
+        // runtime-selected texture variants (e.g. shirt colour): one copy of the group per variant
+        h.variants.forEach((t, vi) => { const vti = texIndex(...t); outGroups.push({ ...gg, ti: vti, al: vti >= 0 && TEX[vti].a ? 1 : 0, variant: vi }); });
+        ntri += (h.variants.length - 1) * IDX.length / 3;
+        continue;
+      }
       outGroups.push(gg);
     }
-    if (ntri < 12 || !outGroups.length) return null;
-    return { id, bones, groups: outGroups, ntri };
+    if (ntri < minTri || !outGroups.length) return null;
+    const pm = { id, bones, groups: outGroups, ntri };
+    if (hints && hints.models && hints.models[id] && hints.models[id].variants) pm.variants = hints.models[id].variants;
+    return pm;
   }
 
   // ---------- LEVEL builder ----------
@@ -762,6 +785,37 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
     const blob = A03.subarray(o, o + s), dec = c ? runzip(blob) : null;
     return truthy(dec) ? dec : blob;
   }
+  // ---------- articulated held props: assets09[objId] skinned to its own little skeleton ----------
+  const A09 = rom.group(0x09), PD09 = parseDir(A09);
+  function getA09(oid) {
+    if (!PD09 || oid < 0 || oid >= PD09.length) return null;
+    const [o, s, c] = PD09[oid];
+    if (s === 0) return null;
+    const blob = A09.subarray(o, o + s), dec = c ? runzip(blob) : null;
+    return truthy(dec) ? dec : blob;
+  }
+  function buildPropPosable(objId) {
+    const data = getA09(objId);
+    if (!truthy(data) || data.length < 0x30) return null;
+    const head = u32(data, 0), so = u32(data, 8), bc = u32(data, 0xC) >>> 4;
+    if (!(0x28 <= head && head < data.length) || !so || !bc || bc > 200 || so + bc * 16 > data.length) return null;
+    const bones = [];
+    for (let i = 0; i < bc; i++) {
+      const o = so + i * 16;
+      bones.push([u8(data, o), u8(data, o + 1), u8(data, o + 2), pyRoundN(f32(data, o + 4), 3), pyRoundN(f32(data, o + 8), 3), pyRoundN(f32(data, o + 12), 3)]);
+    }
+    let dls;
+    if (data[head] !== 0) dls = [head];
+    else {
+      const cnt = u32(data, 4) >>> 2;
+      if (cnt === 0 || cnt > 256) return null;
+      dls = [];
+      for (let i = 0; i < cnt; i++) dls.push(u32(data, head + 4 * i));
+    }
+    const ranges = dls.filter((dl) => 0x28 <= dl && dl < data.length).map((dl) => [dl, data.length, true]);
+    const groups = walkPosable(data, ranges, head, (seg, off) => (seg === 1 ? 0x28 + off : off), new Map(), {});
+    return packPosable(-1, bones, groups, 1);   // small props (a 9-tri yo-yo string) are still real
+  }
   function a03Groups(blob) {
     if (!truthy(blob) || blob.length < 0x30) return null;
     const head = u32(blob, 0);
@@ -783,8 +837,8 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
   }
 
   function buildLevel(level, animmap) {
-    const a04 = subdata(0x04, level), pd = parseDir(a04);
-    if (!pd) return null;
+    // a few levels (chunk 62) have no terrain block at all and are built purely from placed external props
+    const a04 = subdata(0x04, level), pd = parseDir(a04) || [];
     let recs = records(subdata(0x0B, level));
     const tBc = subdata(0x0C, level), pdB = tBc ? parseDir(tBc) : null;
     if (pdB && pdB.length > 2) {
@@ -793,6 +847,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
       if (c) { const dec = runzip(tB); if (truthy(dec)) tB = dec; }
       recs = recs.concat(records(tB));
     }
+    if (!pd.length && !recs.length) return null;
     const refparts = new Set(recs.filter((r) => r.kind === 1 || r.kind === 2).map((r) => r.id));
     const groups = new Map(), tstate = {};
     pd.forEach(([po, ps], pi) => {
@@ -931,9 +986,10 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
   }
 
   // ---------- attachment table (D_80086CC4) ----------
+  const propanim = [], propSeen = new Set();
   function buildAttachments() {
     const gd = rom.gameData(), TABLE = 0x80086CC4 - DATA_VRAM, out = [], cache = new Map();
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 256; i++) {
       const e = TABLE + i * 8;
       if (e + 8 > gd.length) break;
       const ptr = u32(gd, e), cw = u32(gd, e + 4), count = cw >>> 24;
@@ -943,6 +999,14 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
         const b = ptr - DATA_VRAM + r * 0x10;
         if (b + 0x10 > gd.length) continue;
         const model = gd[b], bone = gd[b + 1], off = [s16(gd, b + 8), s16(gd, b + 0xA), s16(gd, b + 0xC)];
+        // type 2 = articulated prop: assets09[model] posed by its own clip pack assets0A[byte 6]
+        if (gd[b + 3] === 2 && !propSeen.has(model)) {
+          propSeen.add(model);
+          let pp = null;
+          try { pp = buildPropPosable(model); } catch (err) { pp = null; }
+          if (pp) propanim.push({ objId: model, bone, packId: gd[b + 6], bones: pp.bones, groups: pp.groups, ntri: pp.ntri });
+        }
+        if (i >= 120) continue;   // the attach-any-part list stays the first 120 objects
         if (!cache.has(model)) {
           let g = null;
           try { [g] = buildA01Object(model); } catch (err) { g = null; }
@@ -953,7 +1017,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
         if (!grps) continue;
         parts.push({ model, bone, off, g: grps });
       }
-      if (parts.length) out.push({ oid: i + 1, parts });
+      if (parts.length && i < 120) out.push({ oid: i + 1, parts });
     }
     return out;
   }
@@ -972,14 +1036,11 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
   const objfiles = [...rom.subfiles(0x03).map(([n, b]) => ["03", n, b]), ...rom.subfiles(0x09).map(([n, b]) => ["09", n, b])];
   objfiles.forEach(([tag, base, blob], k) => {
     if (k % 16 === 0) progress("Objects", k / objfiles.length);
-    let g = null, isSkel = false;
-    try { [g, isSkel] = buildObject(blob); } catch (e) { g = null; isSkel = false; }
+    let g = null;
+    try { [g] = buildObject(blob); } catch (e) { g = null; }
     if (!g || !g.size) return;
     const item = packItem(`a${tag}·${base}`, `assets${tag} · ${base}`, "object", g, null, true);
-    if (!item || item.ntri < 12) return;
-    const coh = item._coh;
-    if (coh < 0.50) return;
-    if (isSkel && coh < 0.68) return;
+    if (!item || item.ntri < 8) return;   // keep every real object; coherence only orders the list
     delete item._soup;
     objects.push(item);
   });
@@ -1010,9 +1071,12 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
   objects.sort((a, b) => cmpTuple(sortkey(a), sortkey(b)));
   for (const m of objects) delete m._coh;
   posable.sort((a, b) => b.ntri - a.ntri);
-  const texmeta = TEXMETA.map((m) => [m[0], m[3], m[4], m[5], m[6]]);
   progress("Attachments", 0);
   let attachments = [];
   try { attachments = buildAttachments(); } catch (e) { attachments = []; }
-  return { textures: TEX, texmeta, texmetaFull: TEXMETA, characters: [], objects, levels, posable, attachments, txfail: TXFAIL };
+  // named texture-animation sets for the texture browser (curated in hints; frames decoded from the ROM)
+  const animsets = ((hints && hints.animsets) || []).map((a) => ({ name: a.name, hold: a.hold, frames: a.frames.map((t) => texIndex(...t)).filter((i) => i >= 0) }))
+    .filter((a) => a.frames.length > 1);
+  const texmeta = TEXMETA.map((m) => [m[0], m[3], m[4], m[5], m[6]]);   // after attachments: they add textures too
+  return { textures: TEX, texmeta, texmetaFull: TEXMETA, characters: [], objects, levels, posable, attachments, propanim, animsets, txfail: TXFAIL };
 }

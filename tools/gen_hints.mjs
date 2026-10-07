@@ -26,7 +26,7 @@ const vkeys = (g) => {
 const FL = ["dec", "ac", "bl", "ws", "wt"];
 const flags = (x, skip = []) => FL.filter((f) => !skip.includes(f)).map((f) => x[f] || 0).join();
 
-const hints = { posable: {} };
+const hints = { posable: {}, models: {}, scroll: {}, animTi: {}, animsets: [] };
 const stat = { textured: 0, untextured: 0, dropped: 0, unmatched: 0 };
 const conflicts = [];
 const refById = new Map(ref.posable.map((m) => [m.id, m]));
@@ -55,6 +55,12 @@ for (const m of js.posable) {
       else {
         if (!g._sampled) { stat.unmatched++; continue; }
         h = { tex: spec(best.ti) }; stat.textured++;
+        // texture variants (shirt colours): the July-31 build emitted one copy of the group per variant
+        if (best.variant != null) {
+          const vs = r.groups.filter((x) => x.variant != null && x.pos === best.pos).sort((a, b) => a.variant - b.variant);
+          h.variants = vs.map((x) => spec(x.ti));
+          h.tex = h.variants[0];
+        }
         if (best.blink) h.blink = best.blink.map(spec);
         if (best.frown != null) h.frown = spec(best.frown);
         if (best.frownIris != null) h.frownIris = spec(best.frownIris);
@@ -82,7 +88,29 @@ for (const mh of Object.values(hints.posable)) {
     if (t.every((x) => x === t[0])) mh[seg + ":*"] = { ...hs[0], fl: undefined };
   }
 }
+for (const r of ref.posable) if (r.variants) hints.models[r.id] = { variants: r.variants };
+// scrolling materials: [du, dv] per frame, keyed by where they occur and the texture id
+const scrollAt = (key, data, g) => { if (g.scroll && g.ti >= 0) hints.scroll[`${key}:${data.texmeta[g.ti][0]}`] ??= g.scroll; };
+for (const L of ref.levels) {
+  const chunk = Number(L.src.match(/chunk (\d+)/)[1]);
+  L.groups.forEach((g) => scrollAt(`lvl:${chunk}`, ref, g));
+  L.partpool.forEach((p) => p.g.forEach((g) => scrollAt(`part:${chunk}:${p.ext}:${p.part}`, ref, g)));
+}
+ref.objects.forEach((o) => o.groups.forEach((g) => scrollAt(`obj:${o.name}`, ref, g)));
+ref.posable.forEach((m) => m.groups.forEach((g) => scrollAt(`pos:${m.id}`, ref, g)));
+// named texture-animation sets shown in the texture browser
+hints.animsets = (ref.animsets || []).map((a) => ({ name: a.name, hold: a.hold, frames: a.frames.map(spec) }));
+// translation tracks the July-31 build kept, where it kept fewer than the clip carries
+for (const [pack, clips] of Object.entries(js.animpacks)) {
+  const refClips = new Map((ref.animpacks[pack] || []).map((c) => [c.aid, c]));
+  for (const c of clips) {
+    const r = refClips.get(c.aid);
+    if (r && c.ti_ && (r.ti_ || []).join() !== c.ti_.join()) hints.animTi[`${pack}:${c.aid}`] = r.ti_ || [];
+  }
+}
 fs.writeFileSync(new URL("../web/data/hints.json", import.meta.url), JSON.stringify(hints));
+console.log(`translation-track overrides: ${Object.keys(hints.animTi).length}`);
+console.log(`scrolling materials: ${Object.keys(hints.scroll).length}, models with variants: ${Object.keys(hints.models).length}`);
 console.log(`runtime-segment groups: textured ${stat.textured}, untextured ${stat.untextured}, dropped ${stat.dropped}, unmatched ${stat.unmatched}`);
 console.log(`models with hints: ${Object.keys(hints.posable).length}`);
 if (conflicts.length) console.log("CONFLICTS:\n  " + conflicts.join("\n  "));

@@ -22,8 +22,22 @@ export async function checkRom(fileBytes) {
 export function extract(romBytes, progress = () => {}, opts = {}) {
   const rom = new Rom(romBytes);
   const data = buildAll(rom, progress, opts);
+  if (opts.hints && opts.hints.scroll) applyScroll(data, opts.hints.scroll);
   progress("Animations", 0);
-  attachAnims(rom, data);
+  attachAnims(rom, data, opts.hints);
   progress("Done", 1);
   return data;
+}
+
+// scrolling materials (water, lava, conveyor belts...) are animated by per-level game code; hints give the speed
+function applyScroll(data, scroll) {
+  const tid = (g) => (g.ti >= 0 ? data.texmeta[g.ti][0] : -1);
+  const at = (key, g) => { const v = scroll[`${key}:${tid(g)}`]; if (v) g.scroll = v; };
+  for (const L of data.levels) {
+    const chunk = Number(L.src.match(/chunk (\d+)/)[1]);
+    L.groups.forEach((g) => at(`lvl:${chunk}`, g));
+    L.partpool.forEach((p) => p.g.forEach((g) => at(`part:${chunk}:${p.ext}:${p.part}`, g)));
+  }
+  data.objects.forEach((o) => o.groups.forEach((g) => at(`obj:${o.name}`, g)));
+  data.posable.forEach((m) => m.groups.forEach((g) => at(`pos:${m.id}`, g)));
 }
