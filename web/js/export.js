@@ -148,9 +148,19 @@
       const idx = arr(g.idx, Uint16Array), uv = arr(g.uv, Int16Array), col = arr(g.col, Uint8Array), va = g.va ? arr(g.va, Uint8Array) : null;
       const n = posF.length / 3, uvF = new Float32Array(n * 2);
       for (let i = 0; i < n * 2; i++) uvF[i] = uv[i] / 512;
+      // the ROM's own per-vertex normals when the group has them (hardware-lit models), else smoothed face normals
+      let nrmF = null;
+      if (g.nrm) {
+        const nr = arr(g.nrm, Int8Array);
+        nrmF = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          const x = nr[i * 3], y = nr[i * 3 + 1], z = nr[i * 3 + 2], l = Math.hypot(x, y, z) || 1;
+          nrmF[i * 3] = x / l; nrmF[i * 3 + 1] = y / l; nrmF[i * 3 + 2] = z / l;
+        }
+      }
       const attrs = {
         POSITION: this.accessor(posF, "VEC3", 5126, { target: 34962, minmax: true }),
-        NORMAL: this.accessor(smoothNormals(posF, idx), "VEC3", 5126, { target: 34962 }),
+        NORMAL: this.accessor(nrmF || smoothNormals(posF, idx), "VEC3", 5126, { target: 34962 }),
         TEXCOORD_0: this.accessor(uvF, "VEC2", 5126, { target: 34962 }),
       };
       // vertex colour carries the baked N64 shading: used when the texture is modulated by it, or when untextured
@@ -278,16 +288,18 @@
   }
 
   // ---------------- static meshes ----------------
-  const isTrigger = (g) => {   // untextured pure-white marker volumes the game never draws (viewer hides them)
+  // levels only: untextured pure-white marker volumes the game never draws (viewer hides them). A standalone object's
+  // white untextured parts are real surfaces coloured at runtime (gloves, a cigarette, eyeballs), so objects keep them.
+  const isTrigger = (g) => {
     if (g.ti >= 0) return false;
     const col = arr(g.col, Uint8Array);
     for (let i = 0; i < col.length; i++) if (col[i] < 250) return false;
     return col.length > 0;
   };
-  function staticMesh(glb, name, groups) {
+  function staticMesh(glb, name, groups, level = true) {
     const prims = [];
     for (const g of groups) {
-      if (isTrigger(g)) continue;
+      if (level && isTrigger(g)) continue;
       const p = arr(g.p, Int16Array), posF = new Float32Array(p.length);
       for (let i = 0; i < p.length; i++) posF[i] = p[i] * SCALE;
       prims.push(glb.primitive(g, posF));
@@ -296,7 +308,7 @@
   }
   async function exportObject(DATA, m) {
     const glb = new Glb(DATA, m.name);
-    const mesh = staticMesh(glb, m.name, m.groups);
+    const mesh = staticMesh(glb, m.name, m.groups, false);
     if (mesh >= 0) glb.json.scenes[0].nodes.push(glb.node({ name: m.name, mesh }));
     return glb.finish();
   }

@@ -13,13 +13,15 @@ const ANIMSETS=DATA.animsets||[];   // [{frames:[texIdx...], hold, name}] — gr
 const $=s=>document.querySelector(s);const fmt=n=>n.toLocaleString('en-US');
 function b64(b,T){if(typeof b!=='string')return b instanceof T?b:new T(b.buffer,b.byteOffset,b.byteLength/T.BYTES_PER_ELEMENT);const s=atob(b),n=s.length,a=new Uint8Array(n);for(let i=0;i<n;i++)a[i]=s.charCodeAt(i);return new T(a.buffer);}
 // build renderable arrays from a group (compute smooth normals)
-function decodeGroup(g){const col=b64(g.col,Uint8Array);
+function decodeGroup(g,lvl){const col=b64(g.col,Uint8Array);
   // INVISIBLE TRIGGER / ZONE volumes (force-fields, camera & load triggers, kill-planes): untextured geometry
   // painted flat pure-white. The game NEVER draws these (collision/logic only); a naive "draw every placed
   // part" viewer shows them as white blobs on ~24 maps. Tag them so they can be hidden by default. Signature =
   // ti<0 (no texture bound in the DL) + uniformly white vertex colour. Coloured untextured geometry that IS
   // meant to be seen (green dino mouth, blue Level-54 path, teal surfaces) has non-white verts -> NOT tagged.
-  let trig=0; if((g.ti==null||g.ti<0)&&col.length){trig=1;for(let i=0;i<col.length;i++){if(col[i]<250){trig=0;break;}}}
+  // Levels only: a standalone object's white untextured parts are real surfaces whose colour/texture the game
+  // binds at runtime (a glove, a cigarette, an eyeball), so tagging them there just made them vanish.
+  let trig=0; if(lvl&&(g.ti==null||g.ti<0)&&col.length){trig=1;for(let i=0;i<col.length;i++){if(col[i]<250){trig=0;break;}}}
   return {ti:g.ti,anim:g.anim||null,aspd:g.aspd||0,aph:g.aph||0,wob:(g.wob==null?null:g.wob),scroll:g.scroll||null,dec:g.dec||0,bl:g.bl||0,al:g.al||0,ac:g.ac||0,ws:g.ws||0,wt:g.wt||0,sky:g.sky||0,mod:g.mod||0,vat:g.vat||0,tg:g.tg||0,trig,va:g.va?b64(g.va,Uint8Array):null,nr:g.nrm?b64(g.nrm,Int8Array):null,tint:g.tint||null,p:b64(g.p,Int16Array),uv:b64(g.uv,Int16Array),col,idx:b64(g.idx,Uint16Array)};}
 // Process one decoded group into GPU-ready arrays. local=true keeps LOCAL (part-space) positions so a
 // per-prop model matrix can transform them live (state controller); local=false bakes centered/scaled pos.
@@ -59,7 +61,7 @@ function procGroup(g,cx,cy,cz,s,local,isLevel){
 function prep(m){
   if(m._g)return m; m._g=[];
   let cx=0,cy=0,cz=0,nv=0,rad=1e-6;
-  const gs=m.groups.map(decodeGroup);
+  const gs=m.groups.map(g=>decodeGroup(g,m.kind==='level'));
   for(const g of gs){for(let i=0;i<g.p.length;i+=3){cx+=g.p[i];cy+=g.p[i+1];cz+=g.p[i+2];nv++;}}
   if(m.props){for(const pr of m.props){cx+=pr.pos[0];cy+=pr.pos[1];cz+=pr.pos[2];nv++;}}   // frame props too
   nv=Math.max(nv,1); cx/=nv;cy/=nv;cz/=nv;
@@ -406,7 +408,9 @@ function initGL(){
       else if(uAlphaMode<2.5){ float a=max(max(t.r,t.g),t.b); gl_FragColor=vec4(rgb*shade,a); } // blend by luminance (light shafts)
       else { gl_FragColor=vec4(rgb*shade,vA); }                                              // per-vertex ALPHA (glass / vtx-alpha translucency)
       return;}
-    if(uMode<1.5){float oa=(uAlphaMode>2.5)?vA:1.0; gl_FragColor=vec4(vC*(uMod>0.5?1.0:sh),oa); return;}  // mod=1: vC IS baked shade (flat-shaded UV0 faces); uAlphaMode>2.5 -> honour per-vertex alpha (untextured glass/overlay)
+    // mod=1: vC IS baked shade (flat-shaded UV0 faces) -> no extra light, unless the group is hardware-lit (real ROM
+    // normals) or its verts are pure white (nothing baked: runtime-coloured parts would otherwise be a flat silhouette)
+    if(uMode<1.5){float oa=(uAlphaMode>2.5)?vA:1.0; bool baked=uMod>0.5&&uLitNrm<0.5&&min(vC.r,min(vC.g,vC.b))<0.98; gl_FragColor=vec4(vC*(baked?1.0:sh),oa); return;}  // uAlphaMode>2.5 -> honour per-vertex alpha (untextured glass/overlay)
     if(uMode<2.5){gl_FragColor=vec4(uFlatCol*sh,1.0); return;}
     gl_FragColor=vec4(uFlatCol,1.0);}`;
   function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))$('#loading').textContent="Shader: "+gl.getShaderInfoLog(o);return o;}
@@ -454,7 +458,7 @@ function glBuf(arr,type){let b=gl.createBuffer();gl.bindBuffer(type,b);gl.buffer
 // ---- STATE CONTROLLER: instanced placed props (state variants + hinge scrub) ----
 function prepProps(m,cx,cy,cz,s){
   // partpool = unique referenced parts, LOCAL geometry (shared by instances)
-  m._pp=m.partpool.map(part=>part.g.map(g=>procGroup(decodeGroup(g),cx,cy,cz,s,true,m.kind==='level')));
+  m._pp=m.partpool.map(part=>part.g.map(g=>procGroup(decodeGroup(g,true),cx,cy,cz,s,true,m.kind==='level')));
   // props = instances; urot = live user rotation delta (hinge scrub)
   m._props=m.props.map(pr=>({pp:pr.pp,pos:pr.pos,rot:pr.rot,sc:pr.sc||[1,1,1],grp:pr.grp,st:pr.st,id:pr.id,ext:pr.ext,
     beh:pr.beh>>>0,init:pr.init>>>0,fl:pr.fl,vis:pr.vis,urot:[0,0,0]}));

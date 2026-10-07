@@ -59,6 +59,25 @@ function omodeMask(length, sft) {
 // array starts right after it; the older one is 0x28. Reading the newer kind from 0x28 shifts every vertex by one
 // slot, so each triangle joins the wrong corners (the "crumpled" props: toilet roll, boxes, the yo-yo, ...).
 function objVtxBase(d) { return d.length >= 0x18 && (u32(d, 0x14) & 0x80000000) ? 0x18 : 0x28; }
+// Conker's microcode keeps vertex normals out of the colour bytes: G_MOVEMEM index 0x0E points at a stream of
+// s8 (nx, ny) pairs, one per vertex-buffer slot, and nz is the low byte of the vertex's flag word (Vtx + 7).
+// Returns [nx, ny, nz] or null; unlit models carry an all-zero stream.
+const s8 = (d, o) => (d[o] << 24) >> 24;
+function cbfdNormal(data, nb, slotIdx, vo) {
+  if (nb < 0 || nb + 2 * slotIdx + 2 > data.length) return null;
+  return [s8(data, nb + 2 * slotIdx), s8(data, nb + 2 * slotIdx + 1), s8(data, vo + 7)];
+}
+const unitNormal = (n) => { if (!n) return false; const l = Math.hypot(n[0], n[1], n[2]); return l > 100 && l < 140; };
+// per-vertex normals for a group (Int8 xyz), only when every vertex has a real one
+function encodeNormals(vs, at) {
+  const N = new Int8Array(vs.length * 3);
+  for (let k = 0; k < vs.length; k++) {
+    const n = vs[k][at];
+    if (!unitNormal(n)) return null;
+    N[k * 3] = n[0]; N[k * 3 + 1] = n[1]; N[k * 3 + 2] = n[2];
+  }
+  return N;
+}
 function isPOT(n) { return n > 0 && (n & (n - 1)) === 0; }
 // bytes a W x H texture occupies in the pool (indices + palette for CI)
 function texBytes(W, H, fmt, siz, flag) {
@@ -174,7 +193,8 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
     let omodeSet = state.omset ?? false, lastpool = state.lastpool ?? null;
     let curcomb1 = state.comb1 ?? 0, combSet = state.combset ?? false, curgeo = state.geo ?? 0;
     let t0W = state.t0W ?? 0, t0H = state.t0H ?? 0;   // last render-tile (0) size, for tile setups that precede the SETTIMG
-    let maskS = state.maskS ?? 0, maskT = state.maskT ?? 0;
+    let maskS = state.maskS ?? 0, maskT = state.maskT ?? 0, nb = state.nb ?? -1;
+    let t0uls = state.t0uls ?? 0, t0ult = state.t0ult ?? 0;   // last render-tile (0) origin
     const ekStr = Array.isArray(extkey) ? extkey.join(":") : String(extkey);
 
     function gettarget() {
@@ -230,9 +250,13 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
           const vo = vb + k * 16;
           if (vmin <= vo && vo + 16 <= vend) {
             const x = s16(data, vo) + mtx[0], y = s16(data, vo + 2) + mtx[1], z = s16(data, vo + 4) + mtx[2];
-            slot.set(start + k, [x, y, z, s16(data, vo + 8), s16(data, vo + 10), u8(data, vo + 12), u8(data, vo + 13), u8(data, vo + 14), u8(data, vo + 15)]);
+            slot.set(start + k, [x, y, z, s16(data, vo + 8), s16(data, vo + 10), u8(data, vo + 12), u8(data, vo + 13), u8(data, vo + 14), u8(data, vo + 15),
+              cbfdNormal(data, nb, start + k, vo)]);
           }
         }
+      } else if (op === 0xDC && (w0 & 0xFF) === 0x0E) {
+        const seg = (w1 >>> 24) & 0xF, off = w1 & 0xFFFFFF;
+        nb = seg === 1 ? vtxBase + off : seg === 0 ? off : -1;   // runtime segments: not in the file
       } else if (op === 0xDA && skel) {
         mtx = skel.get(Math.floor((w1 & 0xFFFFFF) / 0x40)) || mtxDefault;
       } else if (op === 0xFA) {
@@ -259,12 +283,15 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
         curcmS = (w1 >>> 8) & 3; curcmT = (w1 >>> 18) & 3;
         maskS = (w1 >>> 4) & 0xF; maskT = (w1 >>> 14) & 0xF;
       } else if (op === 0xF2) {
-        const uls = (w0 >>> 12) & 0xFFF, ult = w0 & 0xFFF, lrs = (w1 >>> 12) & 0xFFF, lrt = w1 & 0xFFF;
-        if (((w1 >>> 24) & 7) === 0) { t0W = ((lrs - uls) >> 2) + 1; t0H = ((lrt - ult) >> 2) + 1; }
+        const uls = (w0 >>> 12) & 0xFFF, ult = w0 & 0xFFF, lrs = (w1 >>> 12) & 0xFFF, lrt = w1 & 0xFFF, tile0 = ((w1 >>> 24) & 7) === 0;
+        if (tile0) { t0W = ((lrs - uls) >> 2) + 1; t0H = ((lrt - ult) >> 2) + 1; t0uls = uls; t0ult = ult; }
         // the first SETTILESIZE after SETTIMG is the render tile; later ones are mip levels (TMEM offsets, not UVs)
         if (expsize) {
           curW = ((lrs - uls) >> 2) + 1; curH = ((lrt - ult) >> 2) + 1;
-          curuls = uls; curult = ult; expsize = false;
+          // a mipmapped load that keeps the render tile (0) from the previous texture sizes only its mip tiles; the
+          // UV origin is still tile 0's (mip origins are scaled per level) — taking the mip's left clamped UVs whole
+          // texture-widths off, so the surface showed one edge texel (a03·0019's hand)
+          curuls = tile0 ? uls : t0uls; curult = tile0 ? ult : t0ult; expsize = false;
         }
       } else if (op === 0x05 || op === 0x06 || (0x10 <= op && op <= 0x1F)) {
         const g = gettarget();
@@ -284,7 +311,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
     }
     Object.assign(state, { tex: curtex, W: curW, H: curH, fmt: curfmt, siz: cursiz, flag: curflag, exp: expsize, prim: curprim,
       omode: curomode, comb0: curcomb0, seg: curseg, cmS: curcmS, cmT: curcmT, omset: omodeSet, lastpool, uls: curuls, ult: curult,
-      comb1: curcomb1, combset: combSet, geo: curgeo, t0W, t0H, maskS, maskT });
+      comb1: curcomb1, combset: combSet, geo: curgeo, t0W, t0H, maskS, maskT, nb, t0uls, t0ult });
   }
 
   // ---------- runtime-bound animated textures ----------
@@ -323,7 +350,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
       COL[k * 3] = v[5]; COL[k * 3 + 1] = v[6]; COL[k * 3 + 2] = v[7];
       VA[k] = v.length > 8 ? v[8] : 255;
     });
-    return { P, UV, COL, VA };
+    return { P, UV, COL, VA, NRM: encodeNormals(used.map((oi) => V[oi]), 9) };
   }
   function uvSpan(UV, axis) {
     let mn = Infinity, mx = -Infinity;
@@ -403,10 +430,11 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
       if (!F.length) continue;
       const used = sortedNums(F.flat()), rm = new Map(used.map((o, k) => [o, k]));
       const guls = g.ws === 2 ? (g.uls || 0) / 4.0 : 0.0, gult = g.wt === 2 ? (g.ult || 0) / 4.0 : 0.0;
-      const { P, UV, COL, VA } = encodeGroup(V, used, ti, guls, gult);
+      const { P, UV, COL, VA, NRM } = encodeGroup(V, used, ti, guls, gult);
       const IDX = new Uint16Array(F.length * 3);
       F.forEach((f, k) => { IDX[k * 3] = rm.get(f[0]); IDX[k * 3 + 1] = rm.get(f[1]); IDX[k * 3 + 2] = rm.get(f[2]); });
       const grp = { ti, p: P, uv: UV, col: COL, idx: IDX };
+      if (NRM) grp.nrm = NRM;
       if (VA.length && minOf(VA) < 250) { grp.va = VA; grp.vat = 1; }
       if (ti >= 0 && TEX[ti].a) grp.al = 1;
       if (g.ac) grp.ac = 1;
@@ -455,11 +483,12 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
       if (!F.length) continue;
       const used = sortedNums(F.flat()), rm = new Map(used.map((o, k) => [o, k]));
       const guls = g.ws === 2 ? (g.uls || 0) / 4.0 : 0.0, gult = g.wt === 2 ? (g.ult || 0) / 4.0 : 0.0;
-      const { P, UV, COL, VA } = encodeGroup(V, used, ti, guls, gult);
+      const { P, UV, COL, VA, NRM } = encodeGroup(V, used, ti, guls, gult);
       const IDX = new Uint16Array(F.length * 3);
       F.forEach((f, k) => { IDX[k * 3] = rm.get(f[0]); IDX[k * 3 + 1] = rm.get(f[1]); IDX[k * 3 + 2] = rm.get(f[2]); });
       if (!IDX.length) continue;
       const grp = { ti, p: P, uv: UV, col: COL, idx: IDX };
+      if (NRM) grp.nrm = NRM;
       if (VA.length && minOf(VA) < 250) { grp.va = VA; grp.vat = 1; }
       if (ti >= 0 && TEX[ti].a) grp.al = 1;
       if (g.ac) grp.ac = 1;
@@ -578,7 +607,15 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
     if (dlStart === null) dlStart = a01FindDl(data, Math.min(vend, data.length));
     if (dlStart === null) return null;
     const secC = u32(data, 0x20);
-    return [vend, dlStart, dlStart < secC && secC <= data.length ? secC : data.length];
+    let dlEnd = dlStart < secC && secC <= data.length ? secC : data.length;
+    // header 0x08/0x0C lists the model's display lists; 31 models also list a second set at 0x28/0x2C that redraws
+    // the same triangles with no texture setup and its own normal stream (a runtime pass). It follows the first set,
+    // so stop there — walking it stacked a stale-textured duplicate of every triangle on top of the real mesh.
+    const t1 = u32(data, 0x28), c1 = u32(data, 0x2C);
+    if (t1 && c1 && c1 % 4 === 0 && t1 + c1 <= data.length) {
+      for (let k = 0; k < c1; k += 4) { const p = u32(data, t1 + k); if (p > dlStart && p < dlEnd) dlEnd = p; }
+    }
+    return [vend, dlStart, dlEnd];
   }
   // an assets01 model's own texture table (header 0x18/0x1C): 12-byte {texid, texid, W<<16|H} entries — the real
   // texture sizes, which the display list's tile setup only approximates (mips, 64x16 load tiles, ...)
@@ -604,7 +641,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
   function walkPosable(data, ranges, vend, vaddr, tdims, mh, vmin = 0x28) {
     const groups = new Map(), slot = new Map(), vslot = new Map();
     let curslot = 0, curtex = null, curW = 0, curH = 0, curfmt = null, cursiz = null, curflag = 0, expsize = false;
-    let curomode = 0, omodeSet = false, curcomb0 = 0, curcomb1 = 0, combSet = false, curseg = 0, curcmS = 0, curcmT = 0, curgeo = 0;
+    let curomode = 0, omodeSet = false, curcomb0 = 0, curcomb1 = 0, combSet = false, curseg = 0, curcmS = 0, curcmT = 0, curgeo = 0, nb = -1;
     function gettarget() {
       const rt = curseg >= 2 ? curseg : 0;
       const sampled = !combSet || combUsesTex(curcomb0, curcomb1);
@@ -641,10 +678,14 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
         for (let k = 0; k < n; k++) {
           const vo = off + k * 16;
           if (vmin <= vo && vo + 16 <= vend) {
-            slot.set(start + k, [s16(data, vo), s16(data, vo + 2), s16(data, vo + 4), s16(data, vo + 8), s16(data, vo + 10), u8(data, vo + 12), u8(data, vo + 13), u8(data, vo + 14), u8(data, vo + 15)]);
+            slot.set(start + k, [s16(data, vo), s16(data, vo + 2), s16(data, vo + 4), s16(data, vo + 8), s16(data, vo + 10), u8(data, vo + 12), u8(data, vo + 13), u8(data, vo + 14), u8(data, vo + 15),
+              cbfdNormal(data, nb, start + k, vo)]);
             vslot.set(start + k, curslot);
           } else slot.delete(start + k);
         }
+      } else if (op === 0xDC && (w0 & 0xFF) === 0x0E) {
+        const seg = (w1 >>> 24) & 0xF;
+        nb = seg <= 1 ? vaddr(seg, w1 & 0xFFFFFF) : -1;   // runtime segments: not in the file
       } else if (op === 0xEF) { curomode = w1; omodeSet = true; }
       else if (op === 0xFC) { curcomb0 = w0; curcomb1 = w1; combSet = true; }
       else if (op === 0xD9) curgeo = ((curgeo & (w0 & 0xFFFFFF)) | w1) >>> 0;
@@ -723,6 +764,8 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
       ntri += IDX.length / 3;
       const al = ti >= 0 && TEX[ti].a ? 1 : 0;
       const gg = { ti, al, ac: g.ac, bl: g.bl, dec: g.dec, mod: g.mod, ws: g.ws, wt: g.wt, n: IDX.length, slot: SLOT, pos: POS, uv: UV, col: COL, idx: IDX };
+      const NRM = encodeNormals(used.map((oi) => V[oi]), 10);   // bone-local (the bind skeleton only translates)
+      if (NRM) gg.nrm = NRM;
       if (g.hint && g.hint.fl) Object.assign(gg, g.hint.fl[[gg.dec, gg.ac, gg.bl, gg.ws, gg.wt].map((v) => v || 0).join()] || {});
       if (VA.length && minOf(VA) < 250) { gg.va = VA; gg.vat = 1; }
       if (gg.bl && !gg.al && !gg.vat) gg.bl = 0;   // XLU render mode with nothing to blend -> draw opaque
