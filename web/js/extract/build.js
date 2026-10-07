@@ -55,6 +55,10 @@ function omodeMask(length, sft) {
   return ((2 ** length - 1) * 2 ** sft) >>> 0;
 }
 
+// assets03/09 object files: the newer header (flag 0x80000000 in the word at 0x14) is 0x18 bytes and the vertex
+// array starts right after it; the older one is 0x28. Reading the newer kind from 0x28 shifts every vertex by one
+// slot, so each triangle joins the wrong corners (the "crumpled" props: toilet roll, boxes, the yo-yo, ...).
+function objVtxBase(d) { return d.length >= 0x18 && (u32(d, 0x14) & 0x80000000) ? 0x18 : 0x28; }
 function isPOT(n) { return n > 0 && (n & (n - 1)) === 0; }
 // bytes a W x H texture occupies in the pool (indices + palette for CI)
 function texBytes(W, H, fmt, siz, flag) {
@@ -158,7 +162,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
   }
 
   // ---------- core DL walk -> per-texindex geometry ----------
-  function walkDlGroups(data, dl, vtxBase, vend, groups, { skel = null, sky = 0, extkey = 0, state = null, runEnd = null, rtInherit = false, tdims = null } = {}) {
+  function walkDlGroups(data, dl, vtxBase, vend, groups, { skel = null, sky = 0, extkey = 0, state = null, runEnd = null, rtInherit = false, tdims = null, vmin = 0x28 } = {}) {
     const slot = new Map();
     let i = dl, mtx = mtxDefault;
     if (state === null) state = {};
@@ -224,7 +228,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
         const vb = seg === 1 ? vtxBase + off : off;
         for (let k = 0; k < n; k++) {
           const vo = vb + k * 16;
-          if (0x28 <= vo && vo + 16 <= vend) {
+          if (vmin <= vo && vo + 16 <= vend) {
             const x = s16(data, vo) + mtx[0], y = s16(data, vo + 2) + mtx[1], z = s16(data, vo + 4) + mtx[2];
             slot.set(start + k, [x, y, z, s16(data, vo + 8), s16(data, vo + 10), u8(data, vo + 12), u8(data, vo + 13), u8(data, vo + 14), u8(data, vo + 15)]);
           }
@@ -494,7 +498,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
   // ---------- OBJECT builder (assets03 / assets09 files) ----------
   function buildObject(blob) {
     if (blob.length < 0x30) return [null, false];
-    const head = u32(blob, 0);
+    const head = u32(blob, 0), vb = objVtxBase(blob);
     if (!(0x28 <= head && head < blob.length)) return [null, false];
     const skel = readSkeleton(blob);
     let dls;
@@ -508,7 +512,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
     const groups = new Map(), tstate = {};
     for (const dl of dls) {
       if (!(0x28 <= dl && dl < blob.length)) continue;
-      walkDlGroups(blob, dl, 0x28, head, groups, { skel, state: tstate, rtInherit: true });
+      walkDlGroups(blob, dl, vb, head, groups, { skel, state: tstate, rtInherit: true, vmin: vb });
     }
     rtFallback(groups);
     return [groups, skel !== null];
@@ -597,7 +601,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
 
   // walk a posable model's display list(s): bone-LOCAL vertices tagged with the G_MTX slot that drives them.
   // ranges = [[start, end, stopAtENDDL]], vaddr(seg, off) -> file offset of a vertex block, mh = runtime hints
-  function walkPosable(data, ranges, vend, vaddr, tdims, mh) {
+  function walkPosable(data, ranges, vend, vaddr, tdims, mh, vmin = 0x28) {
     const groups = new Map(), slot = new Map(), vslot = new Map();
     let curslot = 0, curtex = null, curW = 0, curH = 0, curfmt = null, cursiz = null, curflag = 0, expsize = false;
     let curomode = 0, omodeSet = false, curcomb0 = 0, curcomb1 = 0, combSet = false, curseg = 0, curcmS = 0, curcmT = 0, curgeo = 0;
@@ -636,7 +640,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
         const n = (w0 >>> 12) & 0xFF, end = (w0 >>> 1) & 0x7F, start = end - n, off = vaddr((w1 >>> 24) & 0xF, w1 & 0xFFFFFF);
         for (let k = 0; k < n; k++) {
           const vo = off + k * 16;
-          if (0x28 <= vo && vo + 16 <= vend) {
+          if (vmin <= vo && vo + 16 <= vend) {
             slot.set(start + k, [s16(data, vo), s16(data, vo + 2), s16(data, vo + 4), s16(data, vo + 8), s16(data, vo + 10), u8(data, vo + 12), u8(data, vo + 13), u8(data, vo + 14), u8(data, vo + 15)]);
             vslot.set(start + k, curslot);
           } else slot.delete(start + k);
@@ -813,12 +817,13 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
       for (let i = 0; i < cnt; i++) dls.push(u32(data, head + 4 * i));
     }
     const ranges = dls.filter((dl) => 0x28 <= dl && dl < data.length).map((dl) => [dl, data.length, true]);
-    const groups = walkPosable(data, ranges, head, (seg, off) => (seg === 1 ? 0x28 + off : off), new Map(), {});
+    const vb = objVtxBase(data);
+    const groups = walkPosable(data, ranges, head, (seg, off) => (seg === 1 ? vb + off : off), new Map(), {}, vb);
     return packPosable(-1, bones, groups, 1);   // small props (a 9-tri yo-yo string) are still real
   }
   function a03Groups(blob) {
     if (!truthy(blob) || blob.length < 0x30) return null;
-    const head = u32(blob, 0);
+    const head = u32(blob, 0), vb = objVtxBase(blob);
     if (!(0x28 <= head && head < blob.length)) return null;
     let dls;
     if (blob[head] !== 0) dls = [head];
@@ -831,7 +836,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
     const groups = new Map(), tstate = {};
     for (const dl of dls) {
       if (!(0x28 <= dl && dl < blob.length)) continue;
-      walkDlGroups(blob, dl, 0x28, head, groups, { state: tstate, rtInherit: false });
+      walkDlGroups(blob, dl, vb, head, groups, { state: tstate, rtInherit: false, vmin: vb });
     }
     return groups;
   }
