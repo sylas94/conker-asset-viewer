@@ -64,9 +64,18 @@ function decRgba16(data, w, h) {
   }
   return guardOpaque(out, n);
 }
+// RGBA32 is stored pre-swizzled for LoadBlock too, but TMEM splits 32-bit texels into two 16-bit banks, so the
+// odd-row swap moves pairs of texels: the two 8-byte halves of every 16-byte group trade places
 function decRgba32(data, w, h) {
-  const n = w * h, d = data.subarray(0, n * 4), out = new Uint8Array(n * 4);
+  const n = w * h, d = data.subarray(0, n * 4), out = new Uint8Array(n * 4), rb = w * 4;
   out.set(d.subarray(0, Math.min(n, Math.floor(d.length / 4)) * 4));
+  for (let y = 1; y < h; y += 2) {
+    for (let b = 0; b + 16 <= rb; b += 16) {
+      const s = y * rb + b;
+      if (s + 16 > d.length) break;
+      out.set(d.subarray(s + 8, s + 16), s); out.set(d.subarray(s, s + 8), s + 8);
+    }
+  }
   return out;
 }
 function palette(tlut, count) {

@@ -6,7 +6,7 @@ import { decodeTexture } from "./texdecode.js";
 import { pyRound, pyRoundN, pySum, cmpTuple, truthy } from "./py.js";
 
 const TEXMAX = 256;
-const TEX_OVERRIDE = new Map([[0xc3a, [64, 16, 0, 3, 0]], [0x54f, [64, 32, 3, 2, 0]]]);
+const TEX_OVERRIDE = new Map([[0x54f, [64, 32, 3, 2, 0]]]);
 const RT_WATER = [0x1c14, 0x1c1b, 0x1c1c, 0x1c1d, 0x1c1e, 0x1c1f, 0x1c20, 0x1c21, 0x1c22, 0x1c15, 0x1c16, 0x1c17, 0x1c18, 0x1c19, 0x1c1a];
 const WATER_CHUNKS = new Set([6, 7, 18, 23, 41, 59, 65]);
 const BACKDROP_TEXIDS = new Set([0x785]);
