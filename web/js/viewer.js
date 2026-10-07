@@ -1470,8 +1470,11 @@ function selectModel(cat,i){PLAYER.on=false;updatePlayerHUD();STATE.cat=cat;STAT
   const nt=new Set();let anim=false;for(const g of m.groups){if(g.ti>=0)nt.add(g.ti);if(g.anim)anim=true;}
   $('#sTex').textContent=nt.size+(anim?' +anim':'');$('#sKind').textContent=m.kind;
   $('#foot-note').textContent=(m.kind==='level'?'world geometry + textures':'character / object')+(anim?' · animated water/lava':'');}
-STATE.states=false;
-function hideStates(){const t=$('#statesTg');if(t)t.style.display='none';const p=$('#states');if(p)p.style.display='none';STATE.states=false;const b=$('#tStates');if(b){b.textContent='Off';b.classList.remove('on');}}
+STATE.states=true;   // the level states / swaps panel is open by default; the choice sticks across models
+function syncStatesBtn(){const b=$('#tStates');if(b){b.textContent=STATE.states?'On':'Off';b.classList.toggle('on',STATE.states);}}
+function setStates(on){STATE.states=on;syncStatesBtn();const p=$('#states');if(p)p.style.display=on?'block':'none';}
+// no placed props here: hide the toggle + panel, but keep the user's on/off choice for the next level
+function hideStates(){const t=$('#statesTg');if(t)t.style.display='none';const p=$('#states');if(p)p.style.display='none';}
 function buildStatesPanel(m){
   const panel=$('#states'),tg=$('#statesTg'); if(!panel||!tg)return;
   if(!m._props||!m._props.length){hideStates();return;}
@@ -1512,7 +1515,7 @@ function buildStatesPanel(m){
   });
   if(!shown)html+='<div class="lbl" style="padding-top:6px">no swap/dynamic objects here — this level is static.</div>';
   panel.innerHTML=html;
-  const cl=$('#statesClose'); if(cl)cl.onclick=()=>hideStates();
+  const cl=$('#statesClose'); if(cl)cl.onclick=()=>setStates(false);
   // variant chips: INDEPENDENT toggles — any number can be on at once (overlapping swaps allowed)
   panel.querySelectorAll('.chip').forEach(ch=>{ch.onclick=()=>{const i=+ch.dataset.i;m._props[i].vis=m._props[i].vis?0:1;ch.classList.toggle('on',!!m._props[i].vis);};});
   panel.querySelectorAll('input[type=range]').forEach(sl=>{sl.oninput=()=>{const gid=sl.dataset.grp,ax=+sl.dataset.ax,v=+sl.value;
@@ -1522,9 +1525,10 @@ function buildStatesPanel(m){
     panel.querySelectorAll('input[data-grp="'+gid+'"]').forEach(sl=>{sl.value=0;});
     panel.querySelectorAll('.v[data-vg="'+gid+'"]').forEach(vs=>vs.innerHTML='0&deg;');};});
   panel.style.display=STATE.states?'block':'none';
+  syncStatesBtn();
 }
 const _bStates=$('#tStates');
-if(_bStates)_bStates.onclick=()=>{STATE.states=!STATE.states;_bStates.textContent=STATE.states?'On':'Off';_bStates.classList.toggle('on',STATE.states);$('#states').style.display=STATE.states?'block':'none';};
+if(_bStates)_bStates.onclick=()=>setStates(!STATE.states);
 function updatePoseRow(){const r=$('#poserow');if(r)r.style.display=(STATE.cat==='posable')?'':'none';}
 function setCatUI(){const isA=STATE.cat==='audio',isT=STATE.cat==='textures';
   const ap=$('#audioplayer'),ar=$('#audiorow'); if(ap)ap.style.display=isA?'flex':'none'; if(ar)ar.style.display=isA?'flex':'none';
