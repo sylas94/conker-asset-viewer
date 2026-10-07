@@ -2,7 +2,7 @@
 // lists (which texture a character's runtime-bound RSP segment shows, its blink/frown frames, which runtime
 // surfaces it left untextured or dropped). Hints hold texture IDs and flags only — every pixel and vertex is
 // still decoded from the visitor's ROM.
-//   node tools/gen_hints.mjs <rom> <jul31.json>      (jul31.json = geometry JSON of the July-31 build; never commit it)
+//   node tools/gen_hints.mjs <rom> <jul31.json> [jul31_audio.json]   (the July-31 build's geometry / audiodata JSON; never commit them)
 import fs from "node:fs";
 import { checkRom, extract } from "../web/js/extract/index.js";
 
@@ -98,6 +98,35 @@ for (const L of ref.levels) {
 }
 ref.objects.forEach((o) => o.groups.forEach((g) => scrollAt(`obj:${o.name}`, ref, g)));
 ref.posable.forEach((m) => m.groups.forEach((g) => scrollAt(`pos:${m.id}`, ref, g)));
+// audio: where each sample's VADPCM bytes sit in the tbl (group 0x17 entry 2) and where each codebook is stored
+{
+  const fsAudio = process.argv[4];
+  if (fsAudio) {
+    const au = JSON.parse(fs.readFileSync(fsAudio, "utf8"));
+    const blob = Buffer.from(au.blob, "base64");
+    const T = 0xAB1950, R = Buffer.from(rom.buffer, rom.byteOffset, rom.byteLength);
+    const gStart = T + R.readUInt32BE(T + 0x17 * 8), gLen = R.readUInt32BE(T + 0x17 * 8 + 4);
+    const G = R.subarray(gStart, gStart + gLen);
+    const tblOff = G.readUInt32BE(2 * 8), tblLen = G.readUInt32BE(2 * 8 + 4) & 0xFFFFFFF, TBL = G.subarray(tblOff, tblOff + tblLen);
+    const books = au.books.map(([order, npred, co]) => {
+      const pat = Buffer.alloc(8 + co.length * 2);
+      pat.writeInt32BE(order, 0); pat.writeInt32BE(npred, 4); co.forEach((v, i) => pat.writeInt16BE(v, 8 + i * 2));
+      return G.indexOf(pat);
+    });
+    let from = 0, missing = 0;
+    const samples = au.samples.map((s) => {
+      const pat = blob.subarray(s.o, s.o + s.l);   // whole sample: short prefixes (silence) repeat
+      let at = TBL.indexOf(pat, from);
+      if (at < 0) at = TBL.indexOf(pat);
+      if (at < 0) { missing++; return null; }
+      from = at + s.l;
+      return [at, s.l, s.b, s.r];
+    });
+    if (books.some((b) => b < 0) || missing) console.log(`audio: ${books.filter((b) => b < 0).length} books / ${missing} samples not found`);
+    hints.audio = { books, samples: samples.filter(Boolean) };
+    console.log(`audio: ${hints.audio.samples.length} samples, ${books.length} codebooks`);
+  }
+}
 // named texture-animation sets shown in the texture browser
 hints.animsets = (ref.animsets || []).map((a) => ({ name: a.name, hold: a.hold, frames: a.frames.map(spec) }));
 // translation tracks the July-31 build kept, where it kept fewer than the clip carries

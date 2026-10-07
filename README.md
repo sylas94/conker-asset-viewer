@@ -1,6 +1,6 @@
 # Conker Asset Explorer
 
-A website for browsing the levels, characters, animations, props and textures of *Conker's Bad Fur Day* (N64, US). The site ships no game data. Visitors choose their own ROM, and the page extracts everything in their browser. The ROM is never uploaded.
+A website for browsing the levels, characters, animations, props, textures and sounds of *Conker's Bad Fur Day* (N64, US). The site ships no game data. Visitors choose their own ROM, and the page extracts everything in their browser. The ROM is never uploaded.
 
 ## How it works
 
@@ -42,15 +42,15 @@ node tools/diff_jul31.mjs <rom> jul31.json [posable|objects|levels|attachments]
 
 The diff prints, item by item, which groups differ (texture, size, triangle count, flags). Some differences are deliberate: where the July 31 build decoded a texture at a size the game's own load commands contradict, the extractor follows the game.
 
-A few things can't be read off the display lists, such as which texture a character's runtime-bound eye or face segment shows, or its blink and frown frames. `tools/gen_hints.mjs <rom> jul31.json` derives them from the July 31 build into `web/data/hints.json`. That file holds texture IDs and flags only; every pixel and vertex still comes from the visitor's ROM.
+A few things can't be read off the display lists or Rare's packed sound bank, such as which texture a character's runtime-bound eye or face segment shows, its blink and frown frames, scroll speeds, or where each sound sample starts. `tools/gen_hints.mjs <rom> jul31.json jul31_audio.json` derives them from the July 31 build into `web/data/hints.json`. That file holds texture IDs and flags only; every pixel and vertex still comes from the visitor's ROM.
 
 The Python scripts (`build_textured.py` and friends, with ROM access in `rom.py`) are the original July 24 pipeline, kept for reference. `node tools/compare_js.mjs <rom> textured.json` compared the first JS port against them, but the extractor has moved on since then.
 
-## Not in the extractor yet
+## Coverage
 
-The July 31 build also had audio (VADPCM samples), scrolling materials, Conker's shirt variants, prop animations and a handful of extra props. The viewer already supports them and turns them on as soon as the data is present.
+Everything the July 31 build showed is extracted: 181 characters (with eyes, blinking, shirt variants), 501 objects, 56 levels, 118 attachments, 26 animated held props, 1,573 character animation clips plus prop clips (with translation tracks), scrolling and animated materials, and all 2,256 audio samples. Most items match the July 31 build exactly; the rest differ in small ways (a few texture sizes the game's own load commands contradict, some blend flags). Vertex normals aren't exported (the July 31 build computed them; the viewer computes its own smooth normals).
 
-`web/data/animtable.json` holds the move names and animation-ID map used by the playable-Conker mode. It's a small hand-labelled table copied from that build and contains no art or audio.
+`web/data/animtable.json` holds the move names and animation-ID map used by the playable-Conker mode, and `web/data/hints.json` holds the curated numbers described above (texture IDs, flags, sample offsets). Neither contains art or audio.
 
 ## Never commit
 

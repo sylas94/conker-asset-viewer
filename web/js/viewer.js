@@ -1553,7 +1553,7 @@ $('#search').addEventListener('input',()=>{if(STATE.cat==='textures')buildGaller
 
 /* ================= AUDIO: live VADPCM decode + Web Audio playback ================= */
 let ACTX=null, curSrc=null, curGain=null, ABYTES=null, curPCM=null, playStart=0, playDur=0, seekRAF=0;
-function audioBytes(){ if(!ABYTES){const bin=atob(AUDIO.blob);ABYTES=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)ABYTES[i]=bin.charCodeAt(i);AUDIO.blob=null;} return ABYTES; }
+function audioBytes(){ if(!ABYTES&&AUDIO.blob instanceof Uint8Array){ABYTES=AUDIO.blob;AUDIO.blob=null;} if(!ABYTES){const bin=atob(AUDIO.blob);ABYTES=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)ABYTES[i]=bin.charCodeAt(i);AUDIO.blob=null;} return ABYTES; }
 // Verified N64 ALADPCM: history term + in-block residual feed-forward, floor-divide by 2048, clamp s16.
 // (uses Math.floor(x/2048) not >>11 — JS bit-ops are 32-bit and would overflow the accumulator.)
 function decodeSample(i){

@@ -29,7 +29,7 @@ const saveRom = (bytes) => idbOp("readwrite", (s) => s.put(bytes, "rom")).catch(
 const forgetRom = () => idbOp("readwrite", (s) => s.delete("rom")).catch(() => {});
 
 // ---------- UI ----------
-const STAGES = { Characters: [0, 0.22], Objects: [0.22, 0.4], Levels: [0.4, 0.88], Attachments: [0.88, 0.93], Animations: [0.93, 1], Done: [1, 1] };
+const STAGES = { Characters: [0, 0.22], Objects: [0.22, 0.4], Levels: [0.4, 0.86], Attachments: [0.86, 0.9], Animations: [0.9, 0.97], Audio: [0.97, 1], Done: [1, 1] };
 function setBusy(on, label = "") {
   gate.classList.toggle("busy", on);
   prog.hidden = !on;
@@ -70,6 +70,8 @@ async function start(fileBytes, { remember, fromCache }) {
       return showError("Extraction failed. Try reloading the page; if it keeps happening, the ROM may be damaged.");
     }
     console.info(`extracted in ${((performance.now() - t0) / 1000).toFixed(1)} s (extractor v${EXTRACTOR_VERSION})`);
+    window.CONKER_AUDIO = m.data.audio || null;
+    delete m.data.audio;
     window.CONKER_DATA = m.data;
     window.CONKER_ANIMTAB = await animtab;
     bootViewer();

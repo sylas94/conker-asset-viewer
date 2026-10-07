@@ -2,6 +2,7 @@
 import { Rom, normalizeRom, sha1Hex, US_SHA1 } from "./rom.js";
 import { buildAll } from "./build.js";
 import { attachAnims } from "./anims.js";
+import { extractAudio } from "./audio.js";
 
 export const EXTRACTOR_VERSION = 1;
 
@@ -25,6 +26,8 @@ export function extract(romBytes, progress = () => {}, opts = {}) {
   if (opts.hints && opts.hints.scroll) applyScroll(data, opts.hints.scroll);
   progress("Animations", 0);
   attachAnims(rom, data, opts.hints);
+  progress("Audio", 0);
+  try { data.audio = extractAudio(rom, opts.hints && opts.hints.audio); } catch (e) { data.audio = null; }
   progress("Done", 1);
   return data;
 }
