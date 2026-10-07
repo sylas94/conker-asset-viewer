@@ -931,7 +931,10 @@ function drawPlayerInLevel(MVP,Vv){
   gl.uniformMatrix4fv(uMVP,false,new Float32Array(MVP));   // restore level MVP for the wire pass
 }
 // on-screen readout of the player's current scale/position (so you can dial in the right size)
+// "Press P to play as Conker" prompt: levels only, hidden while playing
+function updatePlayPrompt(){const b=$('#playPrompt');if(b)b.style.display=(STATE.cat==='levels'&&!PLAYER.on)?'inline-flex':'none';}
 function updatePlayerHUD(){
+  updatePlayPrompt();
   let h=document.getElementById('playHUD');
   if(!PLAYER.on){ if(h)h.style.display='none'; return; }
   if(!h){ h=document.createElement('div'); h.id='playHUD';
@@ -1530,7 +1533,8 @@ function buildStatesPanel(m){
 const _bStates=$('#tStates');
 if(_bStates)_bStates.onclick=()=>setStates(!STATE.states);
 function updatePoseRow(){const r=$('#poserow');if(r)r.style.display=(STATE.cat==='posable')?'':'none';}
-function setCatUI(){const isA=STATE.cat==='audio',isT=STATE.cat==='textures';
+if($('#playPrompt'))$('#playPrompt').onclick=()=>{$('#playPrompt').blur();dispatchEvent(new KeyboardEvent('keydown',{key:'p'}));};
+function setCatUI(){updatePlayPrompt();const isA=STATE.cat==='audio',isT=STATE.cat==='textures';
   const ap=$('#audioplayer'),ar=$('#audiorow'); if(ap)ap.style.display=isA?'flex':'none'; if(ar)ar.style.display=isA?'flex':'none';
   const tgal=$('#texgallery'); if(tgal)tgal.style.display=isT?'flex':'none';
   const sb=$('#search'); if(sb)sb.placeholder=isT?'filter by id (0x…) or format…':'filter…';
