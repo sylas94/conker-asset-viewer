@@ -280,8 +280,11 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
         curfmt = (w0 >>> 21) & 7; cursiz = (w0 >>> 19) & 3;
       } else if (op === 0xF5) {
         curfmt = (w0 >>> 21) & 7; cursiz = (w0 >>> 19) & 3;
-        curcmS = (w1 >>> 8) & 3; curcmT = (w1 >>> 18) & 3;
-        maskS = (w1 >>> 4) & 0xF; maskT = (w1 >>> 14) & 0xF;
+        // wrap/mask belong to the render tile (0); a later palette or load tile (6/7) doesn't change how it samples
+        if (((w1 >>> 24) & 7) === 0) {
+          curcmS = (w1 >>> 8) & 3; curcmT = (w1 >>> 18) & 3;
+          maskS = (w1 >>> 4) & 0xF; maskT = (w1 >>> 14) & 0xF;
+        }
       } else if (op === 0xF2) {
         const uls = (w0 >>> 12) & 0xFFF, ult = w0 & 0xFFF, lrs = (w1 >>> 12) & 0xFFF, lrt = w1 & 0xFFF, tile0 = ((w1 >>> 24) & 7) === 0;
         if (tile0) { t0W = ((lrs - uls) >> 2) + 1; t0H = ((lrt - ult) >> 2) + 1; t0uls = uls; t0ult = ult; }
@@ -697,7 +700,8 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
         curflag = off & 0xC00000; curtex = off & 0x3FFFFF; expsize = true;
         curseg = (w1 >>> 24) & 0xF; curfmt = (w0 >>> 21) & 7; cursiz = (w0 >>> 19) & 3;
       } else if (op === 0xF5) {
-        curfmt = (w0 >>> 21) & 7; cursiz = (w0 >>> 19) & 3; curcmS = (w1 >>> 8) & 3; curcmT = (w1 >>> 18) & 3;
+        curfmt = (w0 >>> 21) & 7; cursiz = (w0 >>> 19) & 3;
+        if (((w1 >>> 24) & 7) === 0) { curcmS = (w1 >>> 8) & 3; curcmT = (w1 >>> 18) & 3; }   // render tile only
       } else if (op === 0xF2) {
         // render-tile (0) size, whether it's set before or after the SETTIMG (both orders occur); tiles 1+ are mips
         if (((w1 >>> 24) & 7) === 0) {
