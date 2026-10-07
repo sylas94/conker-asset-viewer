@@ -154,7 +154,7 @@ function decI4(data, w, h) {
 
 /** Decode an N64 texture -> [rgba, fmtName] or [null, null].
  *  CI-ness comes from the SETTIMG flag; non-CI bit depth is picked by asset size (see tex_decode.py). */
-export function decodeTexture(data, w, h, fmt = null, siz = null, flag = 0) {
+export function decodeTexture(data, w, h, fmt = null, siz = null, flag = 0, exact = false) {
   if (!data || !data.length || w <= 0 || h <= 0) return [null, null];
   const n = w * h, L = data.length;
   try {
@@ -162,6 +162,18 @@ export function decodeTexture(data, w, h, fmt = null, siz = null, flag = 0) {
     if (flag === 0x800000) return [decCi4(data, w, h), "CI4"];
     if (fmt === 2 && siz === 1) return [decCi8(data, w, h), "CI8"];
     if (fmt === 2 && siz === 0) return [decCi4(data, w, h), "CI4"];
+    // the render tile's own format: trust it whenever the asset holds that many texels. (Mip levels make assets
+    // bigger than the base image, which fooled the size guess below into a deeper format: IA4 read as IA8, IA8 as I8.)
+    if (exact && siz !== null && L >= n * [0.5, 1, 2, 4][siz]) {
+      const k = fmt + ":" + siz;
+      if (k === "0:2") return [decRgba16(data, w, h), "RGBA16"];
+      if (k === "0:3") return [decRgba32(data, w, h), "RGBA32"];
+      if (k === "3:0") return [decIa4(data, w, h), "IA4"];
+      if (k === "3:1") return [decIa8(data, w, h), "IA8"];
+      if (k === "3:2") return [decIa16(data, w, h), "IA16"];
+      if (k === "4:0") return [decI4(data, w, h), "I4"];
+      if (k === "4:1") return [decI8(data, w, h), "I8"];
+    }
     for (const [base, depth] of [[n * 4, 32], [n * 2, 16], [n, 8], [Math.floor(n / 2), 4]]) {
       if (base > 0 && 0.90 * base <= L && L <= 1.55 * base) {
         if (depth === 32) return [decRgba32(data, w, h), "RGBA32"];

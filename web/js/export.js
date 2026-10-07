@@ -316,8 +316,12 @@
   async function exportLevel(DATA, L) {
     const glb = new Glb(DATA, L.name);
     const root = [];
-    const terrain = staticMesh(glb, L.name + " terrain", L.groups);
+    const terrain = staticMesh(glb, L.name + " terrain", L.groups.filter((g) => !g.sky));
     if (terrain >= 0) root.push(glb.node({ name: "terrain", mesh: terrain }));
+    // sky / backdrop: the game draws it centred on the camera, so it gets its own node (at the origin) to hide or
+    // parent to a camera; left in the terrain it slices through the level (the Level 7 star)
+    const sky = staticMesh(glb, L.name + " sky", L.groups.filter((g) => g.sky));
+    if (sky >= 0) root.push(glb.node({ name: "sky (camera-centred backdrop)", mesh: sky }));
     const partMesh = new Map();
     const props = L._props || L.props;
     props.forEach((pr, i) => {

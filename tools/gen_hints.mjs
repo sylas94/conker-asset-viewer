@@ -88,6 +88,9 @@ for (const mh of Object.values(hints.posable)) {
     if (t.every((x) => x === t[0])) mh[seg + ":*"] = { ...hs[0], fl: undefined };
   }
 }
+// corrections to the July build's choices: model 114 (cheerleader Berri) got her grey cheek texture 0x3ca as the
+// eyes; her texture table carries the same eye set as model 151 (0x3c5..0x3c9), so she gets 151's eyes + blink.
+if (hints.posable[151]) hints.posable[114] = JSON.parse(JSON.stringify(hints.posable[151]));
 for (const r of ref.posable) if (r.variants) hints.models[r.id] = { variants: r.variants };
 // scrolling materials: [du, dv] per frame, keyed by where they occur and the texture id
 const scrollAt = (key, data, g) => { if (g.scroll && g.ti >= 0) hints.scroll[`${key}:${data.texmeta[g.ti][0]}`] ??= g.scroll; };

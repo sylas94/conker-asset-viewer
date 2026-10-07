@@ -128,7 +128,8 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
     return k > 1 ? [W * k, H * k] : [W, H];
   }
 
-  function texIndex(texid, W, H, fmt = null, siz = null, flag = 0) {
+  // exact: fmt/siz are the render tile's, so decode by them instead of guessing the depth from the asset size
+  function texIndex(texid, W, H, fmt = null, siz = null, flag = 0, exact = false) {
     if (!texid || !W || !H || W < 1 || H < 1) { TXFAIL.notexid++; return -1; }
     const data = rom.asset(texid);
     let idx = -1;
@@ -139,7 +140,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
     if (TEXKEY.has(key)) return TEXKEY.get(key);
     if (!truthy(data)) TXFAIL.noasset++;
     else {
-      const [px0, fname] = decodeTexture(data, W, H, fmt, siz, flag);
+      const [px0, fname] = decodeTexture(data, W, H, fmt, siz, flag, exact);
       if (px0 && px0.length && px0.length === W * H * 4) {
         const pw = pot(W), ph = pot(H);
         const px = pw !== W || ph !== H ? resizeNN(px0, W, H, pw, ph) : px0;
@@ -195,6 +196,9 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
     let t0W = state.t0W ?? 0, t0H = state.t0H ?? 0;   // last render-tile (0) size, for tile setups that precede the SETTIMG
     let maskS = state.maskS ?? 0, maskT = state.maskT ?? 0, nb = state.nb ?? -1;
     let t0uls = state.t0uls ?? 0, t0ult = state.t0ult ?? 0;   // last render-tile (0) origin
+    // render-tile (0) format: what the RDP samples. SETTIMG's format describes the load (4-bit textures are loaded
+    // as 16-bit blocks), and the load tile (7) is often set after tile 0, so neither can be trusted.
+    let t0fmt = state.t0fmt ?? null, t0siz = state.t0siz ?? null;
     const ekStr = Array.isArray(extkey) ? extkey.join(":") : String(extkey);
 
     function gettarget() {
@@ -210,13 +214,14 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
         if (td) [W, H] = td;
         // a clamped tile is often a couple of texels short of the texture (62 of 64); decoding at the short width
         // shears every row. Take the wrap-mask / next power-of-two size when the asset is exactly that big.
+        const exact = t0fmt !== null, fmt = exact ? t0fmt : curfmt, siz = exact ? t0siz : cursiz;
         if (curtex && (!isPOT(W) || !isPOT(H))) {
           const W2 = isPOT(W) ? W : maskS && 1 << maskS >= W ? 1 << maskS : pot(W), H2 = isPOT(H) ? H : maskT && 1 << maskT >= H ? 1 << maskT : pot(H);
-          if ((W2 !== W || H2 !== H) && texBytes(W2, H2, curfmt, cursiz, curflag) === rom.asset(curtex)?.length
-              && texBytes(W, H, curfmt, cursiz, curflag) !== rom.asset(curtex)?.length) { W = W2; H = H2; }
+          if ((W2 !== W || H2 !== H) && texBytes(W2, H2, fmt, siz, curflag) === rom.asset(curtex)?.length
+              && texBytes(W, H, fmt, siz, curflag) !== rom.asset(curtex)?.length) { W = W2; H = H2; }
         }
-        ti = curtex ? texIndex(curtex, W, H, curfmt, cursiz, curflag) : -1;
-        if (ti >= 0) lastpool = [curtex, W, H, curfmt, cursiz, curflag];
+        ti = curtex ? texIndex(curtex, W, H, fmt, siz, curflag, exact) : -1;
+        if (ti >= 0) lastpool = [curtex, W, H, fmt, siz, curflag, exact];
       }
       const zmode = (curomode >>> 10) & 3;
       const dec = zmode === 3 ? 1 : 0, blend = zmode === 2 ? 1 : 0;
@@ -280,10 +285,11 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
         curfmt = (w0 >>> 21) & 7; cursiz = (w0 >>> 19) & 3;
       } else if (op === 0xF5) {
         curfmt = (w0 >>> 21) & 7; cursiz = (w0 >>> 19) & 3;
-        // wrap/mask belong to the render tile (0); a later palette or load tile (6/7) doesn't change how it samples
+        // wrap/mask/format belong to the render tile (0); a later palette or load tile (6/7) doesn't change how it samples
         if (((w1 >>> 24) & 7) === 0) {
           curcmS = (w1 >>> 8) & 3; curcmT = (w1 >>> 18) & 3;
           maskS = (w1 >>> 4) & 0xF; maskT = (w1 >>> 14) & 0xF;
+          t0fmt = curfmt; t0siz = cursiz;
         }
       } else if (op === 0xF2) {
         const uls = (w0 >>> 12) & 0xFFF, ult = w0 & 0xFFF, lrs = (w1 >>> 12) & 0xFFF, lrt = w1 & 0xFFF, tile0 = ((w1 >>> 24) & 7) === 0;
@@ -314,7 +320,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
     }
     Object.assign(state, { tex: curtex, W: curW, H: curH, fmt: curfmt, siz: cursiz, flag: curflag, exp: expsize, prim: curprim,
       omode: curomode, comb0: curcomb0, seg: curseg, cmS: curcmS, cmT: curcmT, omset: omodeSet, lastpool, uls: curuls, ult: curult,
-      comb1: curcomb1, combset: combSet, geo: curgeo, t0W, t0H, maskS, maskT, nb, t0uls, t0ult });
+      comb1: curcomb1, combset: combSet, geo: curgeo, t0W, t0H, maskS, maskT, nb, t0uls, t0ult, t0fmt, t0siz });
   }
 
   // ---------- runtime-bound animated textures ----------
@@ -328,7 +334,8 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
     return rtWaterFrames;
   };
   const panelFrames = () => (panelFramesL ??= PANEL_FRAMES_IDS.map((t) => texIndex(t, 32, 32, 0, 2, 0)).filter((i) => i >= 0));
-  const lv1aPanels = () => (lv1aPanelsL ??= LV1A_PANEL_IDS.map((t) => texIndex(t, 64, 32, 0, 2, 0)).filter((i) => i >= 0));
+  // portrait 32x64 RGBA16 (decoded at 64x32 every two rows sat side by side: two squashed copies of the panel)
+  const lv1aPanels = () => (lv1aPanelsL ??= LV1A_PANEL_IDS.map((t) => texIndex(t, 32, 64, 0, 2, 0, true)).filter((i) => i >= 0));
 
   function rtFallback(groups, onlyUntextured = false) {
     let best = null, bestn = 0;
@@ -644,7 +651,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
   function walkPosable(data, ranges, vend, vaddr, tdims, mh, vmin = 0x28) {
     const groups = new Map(), slot = new Map(), vslot = new Map();
     let curslot = 0, curtex = null, curW = 0, curH = 0, curfmt = null, cursiz = null, curflag = 0, expsize = false;
-    let curomode = 0, omodeSet = false, curcomb0 = 0, curcomb1 = 0, combSet = false, curseg = 0, curcmS = 0, curcmT = 0, curgeo = 0, nb = -1;
+    let curomode = 0, omodeSet = false, curcomb0 = 0, curcomb1 = 0, combSet = false, curseg = 0, curcmS = 0, curcmT = 0, curgeo = 0, nb = -1, t0fmt = null, t0siz = null;
     function gettarget() {
       const rt = curseg >= 2 ? curseg : 0;
       const sampled = !combSet || combUsesTex(curcomb0, curcomb1);
@@ -654,7 +661,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
       const h0 = !rt ? undefined : !sampled ? mh[hk + ":u"] : (mh[hk] !== undefined ? mh[hk] : mh[rt + ":*"]);
       const h = h0 && (h0.drop || (sampled && h0.tex)) ? h0 : null;
       const td = curtex ? tdims.get(curtex) : null;
-      const ti = !sampled ? -1 : rt ? (h && h.tex ? texIndex(...h.tex) : -1) : (curtex ? texIndex(curtex, td ? td[0] : curW, td ? td[1] : curH, curfmt, cursiz, curflag) : -1);
+      const ti = !sampled ? -1 : rt ? (h && h.tex ? texIndex(...h.tex) : -1) : (curtex ? texIndex(curtex, td ? td[0] : curW, td ? td[1] : curH, t0fmt ?? curfmt, t0siz ?? cursiz, curflag, t0fmt !== null) : -1);
       const zmode = (curomode >>> 10) & 3, dec = zmode === 3 ? 1 : 0, blend = zmode === 2 ? 1 : 0;
       const c = curcomb0;
       let mod = [(c >>> 20) & 0xF, (c >>> 15) & 0x1F, (c >>> 5) & 0xF, c & 0x1F].includes(4) ? 1 : 0;
@@ -701,7 +708,7 @@ export function buildAll(rom, progress = () => {}, { hints = null, debug = false
         curseg = (w1 >>> 24) & 0xF; curfmt = (w0 >>> 21) & 7; cursiz = (w0 >>> 19) & 3;
       } else if (op === 0xF5) {
         curfmt = (w0 >>> 21) & 7; cursiz = (w0 >>> 19) & 3;
-        if (((w1 >>> 24) & 7) === 0) { curcmS = (w1 >>> 8) & 3; curcmT = (w1 >>> 18) & 3; }   // render tile only
+        if (((w1 >>> 24) & 7) === 0) { curcmS = (w1 >>> 8) & 3; curcmT = (w1 >>> 18) & 3; t0fmt = curfmt; t0siz = cursiz; }   // render tile only
       } else if (op === 0xF2) {
         // render-tile (0) size, whether it's set before or after the SETTIMG (both orders occur); tiles 1+ are mips
         if (((w1 >>> 24) & 7) === 0) {

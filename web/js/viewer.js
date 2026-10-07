@@ -1312,6 +1312,10 @@ function uploadProps(m){
 function uploadMesh(m){
   if(m._buf)return; m._buf=m._g.map(g=>({ti:g.ti,anim:g.anim,aspd:g.aspd,aph:g.aph,wob:g.wob,scroll:g.scroll,dec:g.dec,bl:g.bl,al:g.al,ac:g.ac,ws:g.ws,wt:g.wt,sky:g.sky,mod:g.mod,vat:g.vat,tg:g.tg,trig:g.trig,litnrm:g.litnrm,tint:g.tint,n:g.n,
     p:glBuf(g.pos,gl.ARRAY_BUFFER),nr:glBuf(g.nrm,gl.ARRAY_BUFFER),uv:glBuf(g.uv,gl.ARRAY_BUFFER),co:glBuf(g.col,gl.ARRAY_BUFFER),va:glBuf(g.va,gl.ARRAY_BUFFER),ix:glBuf(g.idx,gl.ELEMENT_ARRAY_BUFFER)}));
+  // sky radius about its ROM origin (viewer units), for the camera-centred sky pass; 0 = no sky
+  m._skyR=0;
+  if(m.kind==='level'){const O=[-m._cx*m._s,-m._cy*m._s,-m._cz*m._s];
+    for(const g of m._g){if(!g.sky)continue;const P=g.pos;for(let i=0;i<P.length;i+=3)m._skyR=Math.max(m._skyR,Math.hypot(P[i]-O[0],P[i+1]-O[1],P[i+2]-O[2]));}}
   uploadProps(m);
 }
 function resize(){const dpr=Math.min(window.devicePixelRatio||1,2),w=cvs.clientWidth,h=cvs.clientHeight;if(cvs.width!==w*dpr||cvs.height!==h*dpr){cvs.width=w*dpr;cvs.height=h*dpr;}}
@@ -1389,13 +1393,27 @@ function render(){
         bindA(aPos,g.p,3);bindA(aNrm,g.nr,3);bindA(aUV,g.uv,2);bindA(aCol,g.co,3);bindA(aVA,g.va,1);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,g.ix);gl.drawElements(gl.TRIANGLES,g.n,gl.UNSIGNED_SHORT,0);
       }
+      // pass 0: SKY / BACKDROP (Level 1/11 domes, the Level 7 star). The game draws these around the camera, behind
+      // everything; placed in world space they slice through the level (the Level 7 star stands 11000 units tall
+      // through the middle of a 5000-unit arena). Centre the sky's ROM origin on the eye, keep only the view
+      // rotation, and draw it first with no depth. Scaling about the eye doesn't change the picture, so k just
+      // fits the sky inside the far plane.
+      if(STATE.sky&&mesh._skyR){
+        const O=[-mesh._cx*mesh._s,-mesh._cy*mesh._s,-mesh._cz*mesh._s],k=far*0.5/mesh._skyR;
+        const Msky=[k,0,0,0, 0,k,0,0, 0,0,k,0, e[0]-k*O[0],e[1]-k*O[1],e[2]-k*O[2],1];
+        gl.uniformMatrix4fv(uMVP,false,new Float32Array(M4.mul(MVP,Msky)));
+        gl.disable(gl.BLEND);gl.disable(gl.DEPTH_TEST);gl.depthMask(false);
+        for(const g of mesh._buf){ if(g.sky)drawGroup(g); }
+        gl.enable(gl.DEPTH_TEST);gl.depthMask(true);
+        gl.uniformMatrix4fv(uMVP,false,new Float32Array(MVP));
+      }
       // pass 1: opaque (defer translucent groups in textured mode)
       gl.disable(gl.BLEND);gl.depthMask(true);
-      for(const g of mesh._buf){ if(!STATE.sky&&g.sky)continue; if(tex0&&g.bl)continue; drawGroup(g); }
+      for(const g of mesh._buf){ if(g.sky)continue; if(tex0&&g.bl)continue; drawGroup(g); }
       // pass 2: translucent (light shafts, water) — blend, no depth write
       if(tex0){
         gl.enable(gl.BLEND);gl.depthMask(false);
-        for(const g of mesh._buf){ if(!STATE.sky&&g.sky)continue; if(!g.bl)continue;
+        for(const g of mesh._buf){ if(g.sky)continue; if(!g.bl)continue;
           // light shafts (translucent, NO alpha channel -> luminance-keyed) are bright textures that read as an
           // opaque grey box under normal over-blend; draw them ADDITIVELY so they glow. Alpha-translucent
           // surfaces (glass/water, has real alpha) keep normal over-blend.
@@ -1420,7 +1438,7 @@ function render(){
       if(PLAYER.on)drawPlayerInLevel(MVP,Vv);   // PLAY MODE: Conker standing in the level (v1 keystone)
       gl.disable(gl.POLYGON_OFFSET_FILL);
       if(STATE.wire){gl.uniform1f(uMode,3.0);gl.uniform1f(uAlphaMode,0.0);const wc=hex2rgb(cssvar('--line')||'#262b36');gl.uniform3f(uFlatCol,wc[0],wc[1],wc[2]);
-        for(const g of mesh._buf){if(g.trig&&!STATE.triggers)continue;bindA(aPos,g.p,3);bindA(aNrm,g.nr,3);bindA(aUV,g.uv,2);bindA(aCol,g.co,3);bindA(aVA,g.va,1);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,g.ix);gl.drawElements(gl.LINES,g.n,gl.UNSIGNED_SHORT,0);}}
+        for(const g of mesh._buf){if((g.trig&&!STATE.triggers)||g.sky)continue;bindA(aPos,g.p,3);bindA(aNrm,g.nr,3);bindA(aUV,g.uv,2);bindA(aCol,g.co,3);bindA(aVA,g.va,1);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,g.ix);gl.drawElements(gl.LINES,g.n,gl.UNSIGNED_SHORT,0);}}
     }
     $('#cDist').textContent=STATE.dist.toFixed(2);
     const _now=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
