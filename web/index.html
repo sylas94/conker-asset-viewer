@@ -5,15 +5,13 @@
 <title>Conker Asset Explorer</title>
 <meta name="description" content="Explore the levels, characters, animations and textures of Conker's Bad Fur Day, extracted in your browser from your own ROM.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%23e0873c%27/%3E%3Cpath d=%27M9 22V10h5.5a4 4 0 0 1 0 8H9m7 0 6 4%27 fill=%27none%27 stroke=%27%230f1218%27 stroke-width=%272.6%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E">
+<meta name="color-scheme" content="dark">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root{--bg:#0f1218;--stage:#080a0f;--panel:#161a23;--panel-2:#1c2130;--line:#262b36;--line-soft:#1e232e;
     --ink:#e7ecf3;--ink-dim:#9aa5b6;--ink-faint:#5f6b7e;--accent:#e0873c;--accent-2:#f2a95c;--data:#8fbfa9;
     --mono:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
     --sans:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;}
-  @media (prefers-color-scheme:light){:root{--bg:#e9e6dd;--stage:#d7d3c6;--panel:#f3f0e8;--panel-2:#eae6db;--line:#cdc7b6;--line-soft:#dbd6c8;--ink:#20242c;--ink-dim:#5a6472;--ink-faint:#8a93a1;--accent:#b8632a;--accent-2:#a9551f;--data:#3f7a5f;}}
-  :root[data-theme="dark"]{--bg:#0f1218;--stage:#080a0f;--panel:#161a23;--panel-2:#1c2130;--line:#262b36;--line-soft:#1e232e;--ink:#e7ecf3;--ink-dim:#9aa5b6;--ink-faint:#5f6b7e;--accent:#e0873c;--accent-2:#f2a95c;--data:#8fbfa9;}
-  :root[data-theme="light"]{--bg:#e9e6dd;--stage:#d7d3c6;--panel:#f3f0e8;--panel-2:#eae6db;--line:#cdc7b6;--line-soft:#dbd6c8;--ink:#20242c;--ink-dim:#5a6472;--ink-faint:#8a93a1;--accent:#b8632a;--accent-2:#a9551f;--data:#3f7a5f;}
   *{box-sizing:border-box}html,body{margin:0;height:100%}
   body{background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
   #app{display:grid;grid-template-columns:290px 1fr;grid-template-rows:auto 1fr auto;grid-template-areas:"head head" "rail stage" "rail foot";height:100vh;gap:1px;background:var(--line-soft)}
@@ -108,9 +106,6 @@
   .item .sw{width:8px;height:8px;border-radius:2px;flex:none}
   /* --- texture gallery --- */
   .checker{--chkA:#2a2f3a;--chkB:#1a1e27;background-image:linear-gradient(45deg,var(--chkA) 25%,transparent 25%,transparent 75%,var(--chkA) 75%),linear-gradient(45deg,var(--chkA) 25%,transparent 25%,transparent 75%,var(--chkA) 75%);background-size:12px 12px;background-position:0 0,6px 6px;background-color:var(--chkB)}
-  @media (prefers-color-scheme:light){.checker{--chkA:#c9c3b3;--chkB:#e4e0d4}}
-  :root[data-theme="light"] .checker{--chkA:#c9c3b3;--chkB:#e4e0d4}
-  :root[data-theme="dark"] .checker{--chkA:#2a2f3a;--chkB:#1a1e27}
   .texgallery{position:absolute;inset:0;display:none;flex-direction:column;background:radial-gradient(130% 130% at 50% 12%,color-mix(in srgb,var(--stage) 82%,var(--panel)) 0%,var(--stage) 72%);z-index:5}
   .tg-bar{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--panel) 70%,transparent);flex-wrap:wrap}
   .tg-bar .ti{font-family:var(--mono);font-size:12px;color:var(--ink-dim)}

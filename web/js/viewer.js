@@ -1903,8 +1903,6 @@ addEventListener('keydown',e=>{if(document.activeElement===$('#search'))return;c
     e.preventDefault(); }
 });
 addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
-new MutationObserver(readTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
-matchMedia('(prefers-color-scheme:dark)').addEventListener('change',readTheme);
 // boot
 readTheme();
 if(!(DATA[STATE.cat]||[]).length){for(const c of CATS){if((DATA[c.id]||[]).length){STATE.cat=c.id;break;}}}
