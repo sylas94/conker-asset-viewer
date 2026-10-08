@@ -949,7 +949,10 @@ function playCam(on){
     const h=(PLAYER.charH||55)*playerBaseScale()*PLAYER.size; STATE.dist=Math.max(0.02,h*6); STATE.pitch=0.32; }
   else if(PLAYER._freeCam){ const c=PLAYER._freeCam; STATE.target=c.target; STATE.yaw=c.yaw; STATE.pitch=c.pitch; STATE.dist=c.dist; PLAYER._freeCam=null; }
 }
-function updatePlayPrompt(){const b=$('#playPrompt');if(b)b.style.display=(STATE.cat==='levels'&&!PLAYER.on)?'inline-flex':'none';
+// touch-only devices (phones/tablets without a keyboard): play mode is keyboard-driven, so its prompt is hidden there
+var TOUCH_ONLY=matchMedia("(hover:none) and (pointer:coarse)").matches;
+if(TOUCH_ONLY){const ih=document.getElementById("inspecthint");if(ih)ih.textContent=ih.textContent.replace(/^click/i,"tap");const h=document.querySelector(".help");if(h)h.innerHTML="<b>Drag</b> orbit · <b>Pinch</b> zoom · <b>Two-finger drag</b> pan<br><b>Tap</b> a surface to inspect · <b>Double-tap</b> reset";}
+function updatePlayPrompt(){const b=$('#playPrompt');if(b)b.style.display=(STATE.cat==='levels'&&!PLAYER.on&&!TOUCH_ONLY)?'inline-flex':'none';
   const ih=$('#inspecthint');if(ih&&PLAYER.on)ih.style.display='none';else if(ih)ih.style.display=STATE.inspect?'block':'none';}
 function updatePlayerHUD(){
   updatePlayPrompt();
@@ -1523,7 +1526,9 @@ function selectModel(cat,i){PLAYER.on=false;updatePlayerHUD();STATE.cat=cat;STAT
   const nt=new Set();let anim=false;for(const g of m.groups){if(g.ti>=0)nt.add(g.ti);if(g.anim)anim=true;}
   $('#sTex').textContent=nt.size+(anim?' +anim':'');$('#sKind').textContent=m.kind;
   $('#foot-note').textContent=(m.kind==='level'?'world geometry + textures':'character / object')+(anim?' · animated water/lava':'');}
-STATE.states=true;   // the level states / swaps panel is open by default; the choice sticks across models
+// the level states / swaps panel is open by default (closed on phone-width screens, where it would cover most of
+// the view; the States button opens it); the choice sticks across models
+STATE.states=!matchMedia('(max-width:780px)').matches;
 function syncStatesBtn(){const b=$('#tStates');if(b){b.textContent=STATE.states?'On':'Off';b.classList.toggle('on',STATE.states);}}
 function setStates(on){STATE.states=on;syncStatesBtn();const p=$('#states');if(p)p.style.display=on?'block':'none';}
 // no placed props here: hide the toggle + panel, but keep the user's on/off choice for the next level
@@ -1734,11 +1739,27 @@ const CMODE=['Textured','Vertex','Plain'];const bColor=$('#tColor');
 bColor.onclick=()=>{STATE.cmode=(STATE.cmode+1)%3;bColor.textContent=CMODE[STATE.cmode];bColor.classList.toggle('on',STATE.cmode===0);};
 // interaction
 let dragging=false,pmode='orbit',lx=0,ly=0;
-cvs.addEventListener('pointerdown',e=>{dragging=true;pmode=(e.button===2||e.button===1||e.shiftKey)?'pan':'orbit';lx=e.clientX;ly=e.clientY;cvs.setPointerCapture(e.pointerId);e.preventDefault();});
+// touch: one finger orbits (like a mouse drag); two fingers pinch to zoom and drag to pan
+const ptrs=new Map();let pinch=null,multiTouch=false;
+const pinchState=()=>{const [a,b]=[...ptrs.values()];return {d:Math.hypot(a.x-b.x,a.y-b.y)||1,mx:(a.x+b.x)/2,my:(a.y+b.y)/2};};
+cvs.addEventListener('pointerdown',e=>{ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size===1)multiTouch=false;
+  if(ptrs.size===2){multiTouch=true;dragging=false;const p=pinchState();pinch={...p,dist:STATE.dist};}
+  else if(ptrs.size===1){dragging=true;pmode=(e.button===2||e.button===1||e.shiftKey)?'pan':'orbit';lx=e.clientX;ly=e.clientY;}
+  cvs.setPointerCapture(e.pointerId);e.preventDefault();});
 cvs.addEventListener('contextmenu',e=>e.preventDefault());
-cvs.addEventListener('pointermove',e=>{if(!dragging)return;const dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;
+cvs.addEventListener('pointermove',e=>{
+  if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch&&ptrs.size>=2){const p=pinchState();
+    STATE.dist=Math.max(0.02,Math.min(80,pinch.dist*pinch.d/p.d));
+    const{s,u}=camBasis();const k=STATE.dist*0.0018,dx=p.mx-pinch.mx,dy=p.my-pinch.my;
+    STATE.target=V3.add(STATE.target,V3.add(V3.scale(s,-dx*k),V3.scale(u,dy*k)));pinch.mx=p.mx;pinch.my=p.my;return;}
+  if(!dragging)return;const dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;
   if(pmode==='orbit'){STATE.yaw-=dx*0.008;STATE.pitch+=dy*0.008;STATE.pitch=Math.max(-1.54,Math.min(1.54,STATE.pitch));}else{const{s,u}=camBasis();const k=STATE.dist*0.0018;STATE.target=V3.add(STATE.target,V3.add(V3.scale(s,-dx*k),V3.scale(u,dy*k)));}});
-addEventListener('pointerup',()=>{dragging=false;});
+const ptrEnd=e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;
+  if(ptrs.size===1&&multiTouch){const p=[...ptrs.values()][0];lx=p.x;ly=p.y;dragging=true;pmode='orbit';}   // lift one finger: keep orbiting
+  else if(!ptrs.size)dragging=false;};
+addEventListener('pointerup',ptrEnd);addEventListener('pointercancel',ptrEnd);
 cvs.addEventListener('wheel',e=>{e.preventDefault();STATE.dist*=Math.exp(Math.sign(e.deltaY)*0.12);STATE.dist=Math.max(0.02,Math.min(80,STATE.dist));},{passive:false});
 cvs.addEventListener('dblclick',resetCam);
 // ---- surface / texture inspector (GPU colour-picking) ----
@@ -1959,6 +1980,7 @@ cvs.addEventListener('pointerdown',e=>{downPX=e.clientX;downPY=e.clientY;},true)
 cvs.addEventListener('pointerup',e=>{
   if(!STATE.inspect)return;
   const dx=e.clientX-downPX,dy=e.clientY-downPY;
+  if(multiTouch)return;   // the end of a pinch isn't a tap
   if(dx*dx+dy*dy<25){const r=cvs.getBoundingClientRect();showInspect(pickAt(e.clientX-r.left,e.clientY-r.top));}
 });
 addEventListener('keydown',e=>{if(document.activeElement===$('#search'))return;const k=e.key.toLowerCase();if('wasdqez'.includes(k)||k===' '){keys[k]=true;if(PLAYER.on||('wasdqe'.includes(k)))e.preventDefault();}});   // z = the Z button (ready stance / high-jump), tracked only for play mode
